@@ -7,3 +7,11 @@
 #historyList .transaction-line strong{font-weight:700}
 #historyList .tx-sep{white-space:pre;color:#72817f}
 #historyList .transaction-amount{white-space:nowrap}
+
+/* v7: category ordering controls */
+.category-order-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid #edf1ee}
+.category-name{flex:1;min-width:0;overflow-wrap:anywhere}
+.category-actions{display:flex;align-items:center;gap:5px;flex-shrink:0}
+.category-actions button{margin:0}
+.category-actions .category-move{min-width:37px;min-height:40px;padding:6px 9px;font-size:19px;line-height:1}
+.category-actions button:disabled{opacity:.3;cursor:default}
