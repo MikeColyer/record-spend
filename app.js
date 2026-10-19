@@ -207,19 +207,18 @@ $('recurringForm').onsubmit=async e=>{e.preventDefault();const f=finance(),type=
   const editId=$('recEditId').value;
   if(editId&&start<=iso(new Date()))return alert('For edits, choose a future first due date. Existing transactions are preserved.');
   if(!editId&&start<iso(new Date())&&!confirm('This start date is in the past. All due transactions from this date onwards will be added to History. Continue?'))return;
-  const r={id:crypto.randomUUID(),type,description,amount,start,end,frequency,paused:false};
+  const r={type,description,amount,start,end,frequency};
   if(type==='expense'){r.category=$('recCategory').value;r.payFrom=$('recPayFrom').value}
   else if(type==='income')r.account=$('recIncomeAccount').value;
   else{r.from=$('recFrom').value;r.to=$('recTo').value;if(r.from===r.to)return alert('Choose two different accounts.')}
   if(editId){
     const previous=f.recurring.find(x=>x.id===editId);if(!previous)return alert('Schedule no longer exists.');
-    const priorEnd=new Date(start+'T12:00:00');priorEnd.setDate(priorEnd.getDate()-1);
-    const cutoff=iso(priorEnd);
-    // Retain the original rule and its identity for history and earlier dates.
-    if(!previous.end||previous.end>cutoff)previous.end=cutoff;
-    r.paused=previous.paused;
+    // Retain the schedule ID and its pause status; existing History is unchanged.
+    Object.assign(previous,r);
+  }else{
+    f.recurring.push({id:crypto.randomUUID(),...r,paused:false});
   }
-  f.recurring.push(r);const count=await catchUpRecurring();await saveRender();$('recStatus').textContent=`Schedule saved${count?' · '+count+' transaction(s) added':''}.`;
+  const count=await catchUpRecurring();await saveRender();$('recStatus').textContent=`Schedule saved${count?' · '+count+' transaction(s) added':''}.`;
   $('recurringForm').reset();$('recStart').value=iso(new Date());
   $('recEditId').value='';$('recFormTitle').textContent='Add recurring transaction';$('recSubmit').textContent='Add recurring transaction';$('recCancelEdit').hidden=true;
 };
