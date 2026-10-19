@@ -15,3 +15,6 @@
 .category-actions button{margin:0}
 .category-actions .category-move{min-width:37px;min-height:40px;padding:6px 9px;font-size:19px;line-height:1}
 .category-actions button:disabled{opacity:.3;cursor:default}
+
+/* Record Spend 2.0 Stage 1 */
+.finance-panel{margin-top:20px}.finance-panel .primary{width:100%;margin-top:18px}.finance-total{font-size:30px;font-weight:750;margin:8px 0 16px;color:#1b6454}.finance-account-row{display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid #edf1ee;padding:11px 0;font-size:14px}.finance-account-row span{color:#4d6264}.finance-account-row button{padding:8px 10px;font-size:12px}.negative{color:#b5483a!important}h3{font-size:16px;margin:24px 0 10px}#financeForm [hidden],#financeEditForm [hidden]{display:none}
