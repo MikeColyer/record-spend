@@ -18,3 +18,6 @@
 
 /* Record Spend 2.0 Stage 1 */
 .finance-panel{margin-top:20px}.finance-panel .primary{width:100%;margin-top:18px}.finance-total{font-size:30px;font-weight:750;margin:8px 0 16px;color:#1b6454}.finance-account-row{display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid #edf1ee;padding:11px 0;font-size:14px}.finance-account-row span{color:#4d6264}.finance-account-row button{padding:8px 10px;font-size:12px}.negative{color:#b5483a!important}h3{font-size:16px;margin:24px 0 10px}#financeForm [hidden],#financeEditForm [hidden]{display:none}
+
+/* Stage 2 */
+#recurringForm [hidden]{display:none}#recurringForm button[type=submit]{width:100%;margin-top:18px}.recurring-row{border-bottom:1px solid #edf1ee;padding:13px 0;display:flex;gap:10px;justify-content:space-between;align-items:center}.recurring-row small{display:block;color:#6c7e83;font-size:12px;margin-top:4px}.recurring-actions{display:flex;gap:5px;flex-direction:column}.recurring-actions button{font-size:12px;padding:7px 9px}
