@@ -133,10 +133,48 @@ function renderAll(){selectOptions($('category'),data.categories);selectOptions(
 function forMonth(d){return data.transactions.filter(t=>t.date.slice(0,7)===ym(d))}
 function sum(ts){return ts.reduce((a,t)=>a+t.amount,0)}
 function bars(root,items,total){root.innerHTML=items.length?items.map(([name,value])=>`<div class="bar-item"><div class="inline"><span>${esc(name)}</span><strong>${money(value)}</strong></div><div class="bar-track"><div class="bar-fill" style="width:${Math.max(0,Math.min(100,total>0?value/total*100:0))}%"></div></div></div>`).join(''):'<p class="muted">No spending recorded for this month.</p>'}
-function renderDashboard(){let ts=forMonth(month),total=sum(ts),budget=Object.values(data.budgets).reduce((a,b)=>a+b,0);$('monthLabel').textContent=label(month);$('monthSpend').textContent=money(total);$('monthBudget').textContent=money(budget);bars($('categoryBars'),data.categories.map(c=>[c,sum(ts.filter(t=>t.category===c))]).filter(x=>x[1]!==0),Math.max(total,1));bars($('cardBars'),data.cards.map(c=>[c,sum(ts.filter(t=>t.card===c))]),Math.max(total,1));let used=data.categories.filter(c=>(data.budgets[c]||0)>0);$('budgetBars').innerHTML=used.length?used.map(c=>{let spent=sum(ts.filter(t=>t.category===c)),limit=data.budgets[c];return `<div class="bar-item"><div class="inline"><span>${esc(c)}</span><strong>${money(spent)} / ${money(limit)}</strong></div><div class="bar-track"><div class="bar-fill" style="width:${Math.min(100,Math.max(0,spent/limit*100))}%"></div></div>${spent>limit?'<small class="warning">Over budget</small>':''}</div>`}).join(''):'<p class="muted">Set monthly category budgets in Settings.</p>'}
+// Stage 3: reporting is derived from existing transactions; no additional stored data.
+function monthPerformance(monthKey){
+  const income=finance().entries.filter(t=>t.type==='income'&&t.date.slice(0,7)===monthKey).reduce((a,t)=>a+t.amount,0);
+  const spent=data.transactions.filter(t=>t.date.slice(0,7)===monthKey).reduce((a,t)=>a+t.amount,0);
+  return {income,spent,net:income-spent};
+}
+function renderTrend(){
+  const rows=[];
+  for(let n=11;n>=0;n--){const d=new Date(month.getFullYear(),month.getMonth()-n,1);rows.push({date:d,key:ym(d),...monthPerformance(ym(d))})}
+  const totals=rows.reduce((a,r)=>({income:a.income+r.income,spent:a.spent+r.spent}),{income:0,spent:0});
+  const net=totals.income-totals.spent;
+  $('yearTotals').innerHTML=`<div>Income <strong>${money(totals.income)}</strong></div><div>Spending <strong>${money(totals.spent)}</strong></div><div>Surplus / deficit <strong class="${net<0?'negative':''}">${net>=0?'+':''}${money(net)}</strong></div>${totals.income?`<div>Income spent <strong>${Math.round(totals.spent/totals.income*100)}%</strong></div>`:''}`;
+  const max=Math.max(1,...rows.flatMap(r=>[r.income,r.spent]));
+  $('yearTrend').innerHTML=rows.map(r=>`<div class="trend-row"><span>${esc(new Intl.DateTimeFormat('en-GB',{month:'short',year:'2-digit'}).format(r.date))}</span><div class="trend-bars"><div class="trend-bar income" style="width:${Math.max(0,r.income/max*100)}%" title="Income ${money(r.income)}"></div><div class="trend-bar spend" style="width:${Math.max(0,r.spent/max*100)}%" title="Spending ${money(r.spent)}"></div></div><strong class="${r.net<0?'negative':''}">${r.net>=0?'+':''}${money(r.net)}</strong></div>`).join('')+'<p class="muted">Green: income · Orange: spending · Right: monthly surplus / deficit</p>';
+}
+function renderProjection(){
+  const f=finance(),today=iso(new Date()),last=iso(new Date(new Date().getFullYear(),new Date().getMonth()+1,0));
+  if(!f.startDate||f.startDate>today){$('projectedBalance').textContent='Not set up';$('projectionDetail').textContent='Set an opening date to activate projections.';return}
+  const opening=financeMovements().current||0;let delta=0,count=0;
+  for(const rule of f.recurring){if(rule.paused)continue;
+    for(let n=0;n<2400;n++){
+      const date=nextRecurringDate(rule,n);
+      if(date>last||rule.end&&date>rule.end)break;
+      if(date<=today||date<f.startDate||occurrenceExists(recurringKey(rule,date)))continue;
+      if(rule.type==='expense'&&rule.payFrom!=='credit')delta-=rule.amount;
+      else if(rule.type==='income'&&rule.account==='current')delta+=rule.amount;
+      else if(rule.type==='transfer'){
+        if(rule.from==='current')delta-=rule.amount;
+        if(rule.to==='current')delta+=rule.amount;
+      }else continue;
+      count++;
+    }
+  }
+  const estimate=opening+delta;
+  $('projectedBalance').textContent=money(estimate);
+  $('projectedBalance').classList.toggle('negative',estimate<0);
+  $('projectionDetail').textContent=`Current recorded balance ${money(opening)} · ${count} scheduled movement${count===1?'':'s'} remaining · Net scheduled change ${delta>=0?'+':''}${money(delta)}. Excludes unplanned spending, variable bill changes and any credit-card payment not scheduled as a transfer.`;
+}
+function renderDashboard(){renderTrend();renderProjection();let ts=forMonth(month),total=sum(ts),budget=Object.values(data.budgets).reduce((a,b)=>a+b,0);$('monthLabel').textContent=label(month);$('monthSpend').textContent=money(total);$('monthBudget').textContent=money(budget);bars($('categoryBars'),data.categories.map(c=>[c,sum(ts.filter(t=>t.category===c))]).filter(x=>x[1]!==0),Math.max(total,1));bars($('cardBars'),data.cards.map(c=>[c,sum(ts.filter(t=>t.card===c))]),Math.max(total,1));let used=data.categories.filter(c=>(data.budgets[c]||0)>0);$('budgetBars').innerHTML=used.length?used.map(c=>{let spent=sum(ts.filter(t=>t.category===c)),limit=data.budgets[c];return `<div class="bar-item"><div class="inline"><span>${esc(c)}</span><strong>${money(spent)} / ${money(limit)}</strong></div><div class="bar-track"><div class="bar-fill" style="width:${Math.min(100,Math.max(0,spent/limit*100))}%"></div></div>${spent>limit?'<small class="warning">Over budget</small>':''}</div>`}).join(''):'<p class="muted">Set monthly category budgets in Settings.</p>'}
 function renderHistory(){let q=$('search').value.toLowerCase().trim();$('historyMonth').textContent=label(histMonth);let ts=forMonth(histMonth).filter(t=>[t.merchant,t.category,t.card,t.notes].join(' ').toLowerCase().includes(q)).sort((a,b)=>b.date.localeCompare(a.date)||b.created-a.created);$('historyList').innerHTML=ts.length?ts.map(t=>`<button type="button" class="transaction" data-id="${esc(t.id)}"><span class="transaction-line"><strong>${t.recurringKey?'↻ ':''}${esc(t.merchant||'Purchase')}</strong><span class="tx-sep"> · </span><span>${esc(t.date)}</span><span class="tx-sep"> · </span><span>${esc(t.category)}</span><span class="tx-sep"> · </span><span>${esc(t.card)}</span><span class="tx-sep"> · </span><strong class="transaction-amount">${money(t.amount)}</strong></span></button>`).join(''):'<p class="muted">No matching transactions.</p>';const extras=financeHistory();if(extras.length){const all=[...extras,...ts.map(t=>({date:t.date,created:t.created,html:`<button type="button" class="transaction" data-id="${esc(t.id)}"><span class="transaction-line"><strong>${t.recurringKey?'↻ ':''}${esc(t.merchant||'Purchase')}</strong> · ${esc(t.date)} · ${esc(t.category)} · ${esc(t.card)} · <strong class="transaction-amount">${money(t.amount)}</strong></span></button>`}))].sort((a,b)=>b.date.localeCompare(a.date)||b.created-a.created);$('historyList').innerHTML=all.map(x=>x.html).join('')} $('historyList').querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>openEdit(b.dataset.id));$('historyList').querySelectorAll('[data-finance-id]').forEach(b=>b.onclick=()=>openFinanceEdit(b.dataset.financeId))}
 async function saveRender(){await dbSave();renderAll()}
-function showView(name){document.querySelectorAll('main section.view').forEach(s=>{s.classList.toggle('active',s.id===name);s.hidden=s.id!==name});document.querySelectorAll('nav button[data-view]').forEach(b=>b.classList.toggle('selected',b.dataset.view===name));if(name==='dashboard')renderDashboard();if(name==='history')renderHistory()}
+function showView(name){document.querySelectorAll('main section.view').forEach(s=>{s.classList.toggle('active',s.id===name);s.hidden=s.id!==name});document.querySelectorAll('nav button[data-view]').forEach(b=>b.classList.toggle('selected',b.dataset.view===name));if(name==='dashboard'){renderDashboard();renderFinance();}if(name==='history')renderHistory()}
 function openEdit(id){let t=data.transactions.find(t=>t.id===id);if(!t)return;$('editId').value=id;$('editDate').value=t.date;$('editAmount').value=(t.amount/100).toFixed(2);$('editMerchant').value=t.merchant;$('editCategory').value=t.category;$('editCard').value=t.card;$('editNotes').value=t.notes||'';$('editDialog').showModal();$('editHeading').focus({preventScroll:true})}
 function download(content,name,type){let url=URL.createObjectURL(new Blob([content],{type})),a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000)}
 function exportCSV(){let rows=[['Date','Card','Merchant','Category','Amount (GBP)','Notes'],...data.transactions.map(t=>[t.date,t.card,t.merchant,t.category,(t.amount/100).toFixed(2),t.notes||''])];let csv=rows.map(row=>row.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\r\n');download('\ufeff'+csv,'spending-transactions-'+iso(new Date())+'.csv','text/csv;charset=utf-8')}

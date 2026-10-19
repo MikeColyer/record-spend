@@ -21,3 +21,6 @@
 
 /* Stage 2 */
 #recurringForm [hidden]{display:none}#recurringForm button[type=submit]{width:100%;margin-top:18px}.recurring-row{border-bottom:1px solid #edf1ee;padding:13px 0;display:flex;gap:10px;justify-content:space-between;align-items:center}.recurring-row small{display:block;color:#6c7e83;font-size:12px;margin-top:4px}.recurring-actions{display:flex;gap:5px;flex-direction:column}.recurring-actions button{font-size:12px;padding:7px 9px}
+
+/* Stage 3 financial trends and projection */
+.year-totals{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}.year-totals div{font-size:12px;color:#58716d;background:#f0f6f2;border-radius:10px;padding:10px}.year-totals strong{display:block;font-size:17px;color:#173d35;margin-top:5px}.trend-row{display:grid;grid-template-columns:53px minmax(0,1fr) 88px;align-items:center;gap:7px;margin:10px 0;font-size:12px}.trend-row strong{text-align:right;font-size:12px}.trend-bars{display:flex;flex-direction:column;gap:3px}.trend-bar{height:7px;border-radius:4px;min-width:0}.trend-bar.income{background:#328a6d}.trend-bar.spend{background:#d38b57}.trend-list>.muted{margin:14px 0 0;font-size:11px}
