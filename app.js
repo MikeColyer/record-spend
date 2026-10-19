@@ -121,7 +121,22 @@ function renderRecurring(){
   $('recType').onchange=()=>{const t=$('recType').value;$('recExpenseFields').hidden=t!=='expense';$('recIncomeFields').hidden=t!=='income';$('recTransferFields').hidden=t!=='transfer'};
   $('recType').onchange();
   $('recStart').value||=iso(new Date());
-  $('recurringList').innerHTML=f.recurring.length?f.recurring.map(r=>`<div class="recurring-row"><div><strong>${esc(r.description)}</strong><small>${esc(r.type)} · ${money(r.amount)} · ${esc(r.frequency)} · from ${esc(r.start)}${r.paused?' · Paused':''}</small></div><div class="recurring-actions"><button class="secondary" type="button" data-rec-pause="${esc(r.id)}">${r.paused?'Resume':'Pause'}</button><button class="danger" type="button" data-rec-delete="${esc(r.id)}">Remove</button></div></div>`).join(''):'<p class="muted">No recurring transactions set up.</p>';
+  $('recurringList').innerHTML=f.recurring.length?f.recurring.map(r=>`<div class="recurring-row"><div><strong>${esc(r.description)}</strong><small>${esc(r.type)} · ${money(r.amount)} · ${esc(r.frequency)} · from ${esc(r.start)}${r.paused?' · Paused':''}</small></div><div class="recurring-actions"><button class="secondary" type="button" data-rec-edit="${esc(r.id)}">Edit</button><button class="secondary" type="button" data-rec-pause="${esc(r.id)}">${r.paused?'Resume':'Pause'}</button><button class="danger" type="button" data-rec-delete="${esc(r.id)}">Remove</button></div></div>`).join(''):'<p class="muted">No recurring transactions set up.</p>';
+  $('recurringList').querySelectorAll('[data-rec-edit]').forEach(b=>b.onclick=()=>{
+    const r=f.recurring.find(x=>x.id===b.dataset.recEdit);if(!r)return;
+    // Editing takes effect on the next ungenerated occurrence; prior entries are preserved.
+    let next='';const today=iso(new Date());
+    for(let n=0;n<2400;n++){const d=nextRecurringDate(r,n);if(d>today){next=d;break}}
+    if(!next){alert('No future occurrence available to edit.');return}
+    $('recEditId').value=r.id;$('recType').value=r.type;$('recType').onchange();
+    $('recDescription').value=r.description;$('recAmount').value=(r.amount/100).toFixed(2);
+    $('recStart').value=next;$('recFrequency').value=r.frequency;$('recEnd').value=r.end||'';
+    $('recCategory').value=r.category||data.categories[0];$('recPayFrom').value=r.payFrom||'current';
+    $('recIncomeAccount').value=r.account||'current';$('recFrom').value=r.from||'current';$('recTo').value=r.to||'credit';
+    $('recFormTitle').textContent='Edit recurring transaction';$('recSubmit').textContent='Save future changes';
+    $('recCancelEdit').hidden=false;$('recStatus').textContent='Changes apply from the date shown. Transactions already in History will not change.';
+    $('recurringForm').scrollIntoView({behavior:'smooth',block:'start'});
+  });
   $('recurringList').querySelectorAll('[data-rec-pause]').forEach(b=>b.onclick=async()=>{const r=f.recurring.find(x=>x.id===b.dataset.recPause);if(!r)return;r.paused=!r.paused;await catchUpRecurring();await saveRender()});
   $('recurringList').querySelectorAll('[data-rec-delete]').forEach(b=>b.onclick=async()=>{if(!confirm('Remove this schedule? Existing transactions will remain in History.'))return;f.recurring=f.recurring.filter(x=>x.id!==b.dataset.recDelete);await saveRender()});
 }
@@ -185,16 +200,28 @@ $('financeForm').onsubmit=async e=>{e.preventDefault();const type=$('financeEntr
 $('financeEditCancel').onclick=()=>$('financeDialog').close();$('financeEditForm').onsubmit=async e=>{e.preventDefault();const t=finance().entries.find(x=>x.id===$('financeEditId').value),amount=cents($('financeEditAmount').value);if(!t||!Number.isSafeInteger(amount)||amount<=0)return alert('Enter a valid amount.');t.amount=amount;t.date=$('financeEditDate').value;t.description=$('financeEditDescription').value.trim();if(t.type==='income')t.account=$('financeEditAccount').value;else{t.from=$('financeEditFrom').value;t.to=$('financeEditTo').value;if(t.from===t.to)return alert('Choose different accounts.')}await saveRender();$('financeDialog').close()};
 $('financeEditDelete').onclick=async()=>{if(!confirm('Delete this transaction?'))return;skipRecurringIfDeleted(finance().entries.find(x=>x.id===$('financeEditId').value));finance().entries=finance().entries.filter(x=>x.id!==$('financeEditId').value);await saveRender();$('financeDialog').close()};
 
+$('recCancelEdit').onclick=()=>{$('recurringForm').reset();$('recEditId').value='';$('recFormTitle').textContent='Add recurring transaction';$('recSubmit').textContent='Add recurring transaction';$('recCancelEdit').hidden=true;$('recStart').value=iso(new Date());$('recType').onchange();$('recStatus').textContent='';};
 $('recurringForm').onsubmit=async e=>{e.preventDefault();const f=finance(),type=$('recType').value,description=$('recDescription').value.trim(),amount=cents($('recAmount').value),start=$('recStart').value,end=$('recEnd').value,frequency=$('recFrequency').value;
   if(!f.startDate)return alert('Set the financial tracking start date in Everyday accounts first.');
   if(!description||!Number.isSafeInteger(amount)||amount<=0||!start||end&&end<start)return alert('Enter a description, positive amount and valid dates.');
-  if(start<iso(new Date())&&!confirm('This start date is in the past. All due transactions from this date onwards will be added to History. Continue?'))return;
+  const editId=$('recEditId').value;
+  if(editId&&start<=iso(new Date()))return alert('For edits, choose a future first due date. Existing transactions are preserved.');
+  if(!editId&&start<iso(new Date())&&!confirm('This start date is in the past. All due transactions from this date onwards will be added to History. Continue?'))return;
   const r={id:crypto.randomUUID(),type,description,amount,start,end,frequency,paused:false};
   if(type==='expense'){r.category=$('recCategory').value;r.payFrom=$('recPayFrom').value}
   else if(type==='income')r.account=$('recIncomeAccount').value;
   else{r.from=$('recFrom').value;r.to=$('recTo').value;if(r.from===r.to)return alert('Choose two different accounts.')}
+  if(editId){
+    const previous=f.recurring.find(x=>x.id===editId);if(!previous)return alert('Schedule no longer exists.');
+    const priorEnd=new Date(start+'T12:00:00');priorEnd.setDate(priorEnd.getDate()-1);
+    const cutoff=iso(priorEnd);
+    // Retain the original rule and its identity for history and earlier dates.
+    if(!previous.end||previous.end>cutoff)previous.end=cutoff;
+    r.paused=previous.paused;
+  }
   f.recurring.push(r);const count=await catchUpRecurring();await saveRender();$('recStatus').textContent=`Schedule saved${count?' · '+count+' transaction(s) added':''}.`;
   $('recurringForm').reset();$('recStart').value=iso(new Date());
+  $('recEditId').value='';$('recFormTitle').textContent='Add recurring transaction';$('recSubmit').textContent='Add recurring transaction';$('recCancelEdit').hidden=true;
 };
 if('serviceWorker'in navigator&&location.protocol==='https:')navigator.serviceWorker.register('./sw.js', {updateViaCache:'none'}).then(reg=>reg.update()).catch(()=>{});}catch(e){alert('Local storage could not be opened. Use Safari on a secure HTTPS site. '+e.message)}}
 document.addEventListener('DOMContentLoaded',init);
