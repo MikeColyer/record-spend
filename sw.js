@@ -1,5 +1,5 @@
 // v8: prefer fresh application files when online, use cached copies offline.
-const CACHE='record-spend-v15';
+const CACHE='record-spend-v16';
 const ASSETS=['./','./index.html','./style.css','./app.js','./manifest.webmanifest','./icon.png','./icon-512.png'];
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(async cache=>{

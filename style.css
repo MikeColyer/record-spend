@@ -27,3 +27,14 @@
 
 /* v15: scheduled current-account movements and overdraft warnings */
 .projection-schedule{margin-top:1rem}.projection-head,.projection-row{display:flex;justify-content:space-between;gap:1rem;align-items:center;padding:.65rem 0;border-bottom:1px solid var(--line,#d9dee5)}.projection-head{font-size:.78rem;opacity:.7;font-weight:600}.projection-row>div:first-child{min-width:0}.projection-row small{display:block;opacity:.75;margin-top:.2rem}.projection-values{text-align:right;white-space:nowrap}.projection-values span{display:block;font-size:.85rem}.projection-values strong{display:block;margin-top:.2rem}.projection-overdrawn{color:#b42318;background:rgba(180,35,24,.07);padding-left:.5rem;padding-right:.5rem;border-radius:.4rem}.projection-alert{color:#b42318;font-weight:600;margin-top:.9rem}
+
+/* v16: six independent, single-open Settings sections */
+#settings .settings-accordion{padding:0;overflow:hidden}
+#settings .settings-toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:19px;background:transparent;border:0;color:#1b303a;text-align:left;font:inherit;font-size:19px;font-weight:700;cursor:pointer;min-height:62px}
+#settings .settings-toggle:focus-visible{outline:3px solid #8cbaa9;outline-offset:-4px}
+#settings .settings-chevron{font-size:25px;line-height:1;color:#58716d;transition:transform .15s ease}
+#settings .settings-toggle[aria-expanded="true"] .settings-chevron{transform:rotate(180deg)}
+#settings .settings-content{padding:0 19px 19px}
+#settings .settings-content[hidden]{display:none!important}
+#settings .settings-content>button{width:100%;margin:8px 0}
+#settings .settings-content>h3:first-child{margin-top:6px}
