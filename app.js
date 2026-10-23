@@ -172,12 +172,37 @@ function monthPerformance(monthKey){
   const spent=data.transactions.filter(t=>t.date.slice(0,7)===monthKey).reduce((a,t)=>a+signedSpend(t),0);
   return {income,spent,net:income-spent};
 }
+// Projected surplus for the selected calendar month: actual income less actual
+// spending, plus only ungenerated future recurring income/expenses. Transfers
+// (including credit-card repayments) never affect income or expenditure.
+function projectedMonthSurplus(monthDate){
+  const key=ym(monthDate),actual=monthPerformance(key),f=finance();
+  const today=iso(new Date()),last=iso(new Date(monthDate.getFullYear(),monthDate.getMonth()+1,0));
+  if(last<today)return null; // A past month is actual, not a forecast.
+  let remainingIncome=0,remainingSpend=0;
+  for(const rule of f.recurring){
+    if(rule.paused||rule.type==='transfer')continue;
+    for(let n=0;n<2400;n++){
+      const date=nextRecurringDate(rule,n);
+      if(date>last||(rule.end&&date>rule.end))break;
+      if(date<=today||date.slice(0,7)!==key||(f.startDate&&date<f.startDate)||occurrenceExists(recurringKey(rule,date)))continue;
+      if(rule.type==='income')remainingIncome+=rule.amount;
+      else if(rule.type==='expense')remainingSpend+=rule.amount; // Credit-card spending counts at purchase time.
+    }
+  }
+  return actual.net+remainingIncome-remainingSpend;
+}
 function renderTrend(){
   const rows=[];
   for(let n=11;n>=0;n--){const d=new Date(month.getFullYear(),month.getMonth()-n,1);rows.push({date:d,key:ym(d),...monthPerformance(ym(d))})}
   const totals=rows.reduce((a,r)=>({income:a.income+r.income,spent:a.spent+r.spent}),{income:0,spent:0});
   const net=totals.income-totals.spent;
-  $('yearTotals').innerHTML=`<div>Income <strong>${money(totals.income)}</strong></div><div>Spending <strong>${money(totals.spent)}</strong></div><div>Surplus / deficit <strong class="${net<0?'negative':''}">${net>=0?'+':''}${money(net)}</strong></div>${totals.income?`<div>Income spent <strong>${Math.round(totals.spent/totals.income*100)}%</strong></div>`:''}`;
+  $('yearTotals').innerHTML=`<div>Income <strong>${money(totals.income)}</strong></div><div>Spending <strong>${money(totals.spent)}</strong></div><div>Surplus / deficit <strong class="${net<0?'negative':''}">${net>=0?'+':''}${money(net)}</strong></div><div>Projected month surplus <strong id="projectedMonthSurplus"></strong><small id="projectedMonthLabel"></small></div>`;
+  const projected=projectedMonthSurplus(month);
+  const projectionValue=$('projectedMonthSurplus');
+  projectionValue.textContent=projected===null?'—':`${projected>=0?'+':''}${money(projected)}`;
+  projectionValue.classList.toggle('negative',projected!==null&&projected<0);
+  $('projectedMonthLabel').textContent=projected===null?'Past month — actual figures above':label(month)+' · scheduled items remaining';
   const max=Math.max(1,...rows.flatMap(r=>[r.income,r.spent]));
   $('yearTrend').innerHTML=rows.map(r=>`<div class="trend-row"><span>${esc(new Intl.DateTimeFormat('en-GB',{month:'short',year:'2-digit'}).format(r.date))}</span><div class="trend-bars"><div class="trend-bar income" style="width:${Math.max(0,r.income/max*100)}%" title="Income ${money(r.income)}"></div><div class="trend-bar spend" style="width:${Math.max(0,r.spent/max*100)}%" title="Spending ${money(r.spent)}"></div></div><strong class="${r.net<0?'negative':''}">${r.net>=0?'+':''}${money(r.net)}</strong></div>`).join('')+'<p class="muted">Green: income · Orange: spending · Right: monthly surplus / deficit</p>';
 }
