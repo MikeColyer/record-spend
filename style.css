@@ -38,3 +38,11 @@
 #settings .settings-content[hidden]{display:none!important}
 #settings .settings-content>button{width:100%;margin:8px 0}
 #settings .settings-content>h3:first-child{margin-top:6px}
+
+/* v18 annual provisions */
+.provision-summary-row{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--line,#e5e7eb)}
+.provision-summary-row span{flex:1;color:var(--muted,#667085);font-size:.9rem}.provision-summary-row strong{white-space:nowrap}
+.provision-item{border:1px solid var(--line,#d9dee5);border-radius:12px;margin:10px 0;padding:12px}
+.provision-item summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;gap:10px;align-items:center}
+.provision-item summary small{font-size:.8rem;color:var(--muted,#667085)}
+.provision-item-body{padding-top:12px}.provision-item .recurring-actions{margin-top:12px}
