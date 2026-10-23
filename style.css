@@ -56,3 +56,6 @@
 .shortfall-item{display:flex;justify-content:space-between;align-items:start;gap:12px;padding:10px 0;border-top:1px solid var(--line,#e5e7eb);font-size:.9rem}
 .shortfall-item div{min-width:0}.shortfall-item small{display:block;color:var(--muted,#667085);margin-top:3px;overflow-wrap:anywhere}
 .shortfall-item>strong{text-align:right;white-space:nowrap}
+
+/* v21: theoretical budget outlook */
+.budget-plan-details{margin-top:14px}.budget-plan-details summary{cursor:pointer;font-weight:600;padding:9px 0}.budget-plan-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}.budget-plan-table{border-collapse:collapse;width:100%;font-size:.83rem;white-space:nowrap}.budget-plan-table th,.budget-plan-table td{text-align:right;padding:9px 7px;border-bottom:1px solid rgba(128,128,128,.22)}.budget-plan-table th:first-child,.budget-plan-table td:first-child{text-align:left}.budget-plan-table .negative{color:#b44848;font-weight:700}
