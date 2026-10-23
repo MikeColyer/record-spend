@@ -46,3 +46,13 @@
 .provision-item summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;gap:10px;align-items:center}
 .provision-item summary small{font-size:.8rem;color:var(--muted,#667085)}
 .provision-item-body{padding-top:12px}.provision-item .recurring-actions{margin-top:12px}
+
+/* v19: expandable provision shortfall explanation; no financial logic changes */
+.provision-shortfall{margin:12px 0;border:1px solid var(--line,#e5e7eb);border-radius:10px;padding:10px 12px}
+.provision-shortfall summary{cursor:pointer;line-height:1.5;list-style:revert}
+.provision-shortfall .shortfall-hint{display:inline-block;text-decoration:underline;font-size:.85rem;margin-left:4px}
+.provision-shortfall[open] .shortfall-hint{display:none}
+.shortfall-breakdown{margin-top:12px}
+.shortfall-item{display:flex;justify-content:space-between;align-items:start;gap:12px;padding:10px 0;border-top:1px solid var(--line,#e5e7eb);font-size:.9rem}
+.shortfall-item div{min-width:0}.shortfall-item small{display:block;color:var(--muted,#667085);margin-top:3px;overflow-wrap:anywhere}
+.shortfall-item>strong{text-align:right;white-space:nowrap}
