@@ -59,3 +59,11 @@
 
 /* v21: theoretical budget outlook */
 .budget-plan-details{margin-top:14px}.budget-plan-details summary{cursor:pointer;font-weight:600;padding:9px 0}.budget-plan-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}.budget-plan-table{border-collapse:collapse;width:100%;font-size:.83rem;white-space:nowrap}.budget-plan-table th,.budget-plan-table td{text-align:right;padding:9px 7px;border-bottom:1px solid rgba(128,128,128,.22)}.budget-plan-table th:first-child,.budget-plan-table td:first-child{text-align:left}.budget-plan-table .negative{color:#b44848;font-weight:700}
+
+/* v22: optional per-month audit trail, without changing the ledger */
+.budget-trace-toggle{border:0;background:transparent;color:inherit;text-align:left;padding:6px 2px;font:inherit;text-decoration:underline;text-underline-offset:3px;cursor:pointer;white-space:nowrap}
+.budget-trace-row[hidden]{display:none}
+.budget-trace-row td{padding:6px 4px 14px!important}
+.budget-trace-content{text-align:left;white-space:normal;border:1px solid var(--border,#d5d9dd);border-radius:10px;padding:12px;line-height:1.55}
+.budget-trace-item{padding:10px 0;border-top:1px solid var(--border,#d5d9dd);font-size:.88rem}
+.budget-trace-item small{font-weight:normal;opacity:.7}
