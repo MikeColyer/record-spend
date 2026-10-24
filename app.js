@@ -87,26 +87,45 @@ function renderSettings(){
 function finance(){if(!data.finance||typeof data.finance!=='object')data.finance={};const f=data.finance;f.startDate=typeof f.startDate==='string'?f.startDate:'';f.currentOpening=Number.isSafeInteger(f.currentOpening)?f.currentOpening:0;f.creditOpening=Number.isSafeInteger(f.creditOpening)?f.creditOpening:0;f.savings=Array.isArray(f.savings)?f.savings:[];f.entries=Array.isArray(f.entries)?f.entries:[];f.recurring=Array.isArray(f.recurring)?f.recurring:[];f.recurringSkipped=Array.isArray(f.recurringSkipped)?f.recurringSkipped:[];f.provisions=Array.isArray(f.provisions)?f.provisions:[];f.provisionMonths=f.provisionMonths&&typeof f.provisionMonths==='object'?f.provisionMonths:{};return f}
 // v21: a separately configured theoretical income; not a cash movement.
 function expectedPlanIncome(){const v=finance().plannedMonthlyIncome;return Number.isSafeInteger(v)&&v>=0?v:null}
-// v22: forecast only in a cloned virtual ledger; never alter persisted accruals.
-function budgetPlanMonth(key,virtual){
+// v23: Forecast contributions are credited at the START of their month,
+// before any payment in that month. This virtual ledger never mutates saved data.
+function budgetPlanMonth(key,virtual,balances){
  const f=finance(),income=expectedPlanIncome(),budgets=Object.values(data.budgets).reduce((a,n)=>a+(Number.isSafeInteger(n)&&n>0?n:0),0);
  let provisions=0;const trace=[];
+ const last=iso(new Date(Number(key.slice(0,4)),Number(key.slice(5,7)),0));
+ const prev=iso(new Date(Number(key.slice(0,4)),Number(key.slice(5,7))-1,0));
  for(const p of f.provisions){
   if(p.paused||key<p.start.slice(0,7))continue;
-  const prev=iso(new Date(Number(key.slice(0,4)),Number(key.slice(5,7))-1,0));
-  const last=iso(new Date(Number(key.slice(0,4)),Number(key.slice(5,7)),0));
-  const opening=provisionState(p,prev,true).balance;
+  // The first forecast month starts from the genuine historical closing reserve.
+  // Subsequent months use the previous simulated closing reserve, never a
+  // recomputed balance that might omit a forecast contribution.
+  const opening=Object.prototype.hasOwnProperty.call(balances,p.id)?balances[p.id]:provisionState(p,prev,true).balance;
   virtual[p.id]??={};
   const locked=virtual[p.id][key]!==undefined;
-  const contribution=locked?virtual[p.id][key]:provisionRequired(p,key,true);
+  const rule=f.recurring.find(r=>r.id===p.ruleId);
+  let contribution;
+  if(locked)contribution=virtual[p.id][key];
+  else if(p.type==='allowance')contribution=Math.floor(p.target/12)+(Number(key.slice(5,7))<=p.target%12?1:0);
+  else if(!rule||rule.paused||rule.type!=='expense'||rule.frequency!=='yearly')contribution=0;
+  else{
+   const dueDate=provisionNextDue(p,key+'-01');
+   const months=Math.max(1,provisionMonthsBetween(key,dueDate.slice(0,7))+1);
+   contribution=Math.max(0,Math.ceil((rule.amount-opening)/months));
+  }
   if(!locked)virtual[p.id][key]=contribution;
-  const closing=provisionState(p,last,true);
+  // Credit the monthly contribution before evaluating payments, including
+  // renewals due on the first day of the month.
+  let closing=opening+contribution,paid=0,covered=0,shortfall=0;
   const payments=provisionEvents(p,last,true).filter(e=>e.date.slice(0,7)===key&&e.kind!=='accrual');
-  const paid=payments.reduce((a,e)=>a+e.amount,0);
-  const linked=f.recurring.find(r=>r.id===p.ruleId);
+  for(const e of payments){
+   paid+=e.amount;
+   if(e.amount>=0){const used=Math.min(Math.max(0,closing),e.amount);closing-=used;covered+=used;shortfall+=e.amount-used;}
+   else{closing-=e.amount;covered+=e.amount;}
+  }
+  balances[p.id]=closing;
   const due=p.type==='bill'?provisionNextDue(p,key+'-01'):null;
   provisions+=contribution;
-  trace.push({name:p.name,type:p.type,opening,contribution,paid,closing:closing.balance,covered:closing.coveredByMonth[key]||0,shortfall:closing.shortfallByMonth[key]||0,due,expected:p.type==='bill'?(linked?.amount??p.target):p.target,locked});
+  trace.push({name:p.name,type:p.type,opening,contribution,available:opening+contribution,paid,closing,covered,shortfall,due,expected:p.type==='bill'?(rule?.amount??p.target):p.target,locked});
  }
  return {income,budgets,provisions,trace,surplus:income===null?null:income-budgets-provisions};
 }
@@ -114,17 +133,18 @@ function renderBudgetPlan(){
  const summary=$('budgetPlanSummary'),table=$('budgetPlanForecast');if(!summary||!table)return;
  const f=finance(),original=f.provisionMonths;
  const virtual=Object.fromEntries(Object.entries(original).map(([id,months])=>[id,{...months}]));
+ const balances=Object.create(null);
  const now=new Date(),first=new Date(now.getFullYear(),now.getMonth(),1),rows=[];
  try{
   f.provisionMonths=virtual;
   for(let i=0;i<12;i++){
    const date=new Date(first.getFullYear(),first.getMonth()+i,1),key=ym(date);
-   rows.push({date,key,...budgetPlanMonth(key,virtual)});
+   rows.push({date,key,...budgetPlanMonth(key,virtual,balances)});
   }
  }finally{f.provisionMonths=original}
  const current=rows[0],configured=current.income!==null;
  summary.innerHTML=`${configured?`<div class="finance-total ${current.surplus<0?'negative':''}">${current.surplus>=0?'+':''}${money(current.surplus)}</div>`:'<p class="warning">Set expected monthly income in Settings to calculate your budgeted surplus.</p>'}<div class="provision-summary-row"><span>Expected monthly income</span><strong>${configured?money(current.income):'Not set'}</strong></div><div class="provision-summary-row"><span>Full monthly budgets</span><strong>−${money(current.budgets)}</strong></div><div class="provision-summary-row"><span>Monthly annual provisions</span><strong>−${money(current.provisions)}</strong></div><p class="muted">Planning benchmark only. Expand a month below to trace each provision, including projected payments and carried-forward balances.</p>`;
- table.innerHTML=rows.map((r,i)=>`<tr><td><button type="button" class="budget-trace-toggle" data-trace="${i}" aria-expanded="false" aria-controls="budget-trace-${i}">▸ ${esc(label(r.date))}</button></td><td>${r.income===null?'—':money(r.income)}</td><td>${money(r.budgets)}</td><td>${money(r.provisions)}</td><td class="${r.surplus!==null&&r.surplus<0?'negative':''}">${r.surplus===null?'—':(r.surplus>=0?'+':'')+money(r.surplus)}</td></tr><tr id="budget-trace-${i}" class="budget-trace-row" hidden><td colspan="5"><div class="budget-trace-content"><strong>${esc(label(r.date))} · provision calculation</strong>${r.trace.length?r.trace.map(t=>`<div class="budget-trace-item"><strong>${esc(t.name)} <small>(${t.type==='bill'?'scheduled bill':'annual allowance'})</small></strong><div>Opening reserve: ${money(t.opening)}</div><div>Monthly contribution: <strong>${money(t.contribution)}</strong>${t.locked?' · recorded/locked':' · forecast'}</div><div>Payments: ${money(t.paid)}${t.paid?' · covered '+money(t.covered):''}</div><div>Closing reserve: ${money(t.closing)}</div>${t.due?`<div>Next scheduled due: ${esc(t.due)} · ${money(t.expected)}</div>`:''}${t.shortfall>0?`<div class="warning">Uncovered: ${money(t.shortfall)}</div>`:''}</div>`).join(''):'<p>No active provisions for this month.</p>'}</div></td></tr>`).join('');
+ table.innerHTML=rows.map((r,i)=>`<tr><td><button type="button" class="budget-trace-toggle" data-trace="${i}" aria-expanded="false" aria-controls="budget-trace-${i}">▸ ${esc(label(r.date))}</button></td><td>${r.income===null?'—':money(r.income)}</td><td>${money(r.budgets)}</td><td>${money(r.provisions)}</td><td class="${r.surplus!==null&&r.surplus<0?'negative':''}">${r.surplus===null?'—':(r.surplus>=0?'+':'')+money(r.surplus)}</td></tr><tr id="budget-trace-${i}" class="budget-trace-row" hidden><td colspan="5"><div class="budget-trace-content"><strong>${esc(label(r.date))} · provision calculation</strong>${r.trace.length?r.trace.map(t=>`<div class="budget-trace-item"><strong>${esc(t.name)} <small>(${t.type==='bill'?'scheduled bill':'annual allowance'})</small></strong><div>Opening reserve: ${money(t.opening)}</div><div>Monthly contribution: <strong>${money(t.contribution)}</strong>${t.locked?' · recorded/locked':' · forecast'}</div><div>Available before payments: ${money(t.available)}</div><div>Payments: ${money(t.paid)}${t.paid?' · covered '+money(t.covered):''}</div><div>Closing reserve: ${money(t.closing)}</div>${t.due?`<div>Next scheduled due: ${esc(t.due)} · ${money(t.expected)}</div>`:''}${t.shortfall>0?`<div class="warning">Uncovered: ${money(t.shortfall)}</div>`:''}</div>`).join(''):'<p>No active provisions for this month.</p>'}</div></td></tr>`).join('');
  table.querySelectorAll('[data-trace]').forEach(btn=>btn.onclick=()=>{
   const detail=$('budget-trace-'+btn.dataset.trace),open=detail.hidden;
   detail.hidden=!open;btn.setAttribute('aria-expanded',String(open));btn.textContent=(open?'▾ ':'▸ ')+label(rows[Number(btn.dataset.trace)].date);
