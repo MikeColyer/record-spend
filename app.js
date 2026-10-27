@@ -452,7 +452,7 @@ function renderProjection(){
   list.innerHTML=`<div class="projection-head"><span>Scheduled transaction</span><span>Change / balance after</span></div>${lines.join('')||'<p class="muted">No further scheduled current-account movements this month.</p>'}${firstNegative?`<p class="projection-alert">⚠ Projected overdraft from ${esc(firstNegative)}. Consider transferring money into the current account before this date.</p>`:''}`;
 }
 
-// v25: Statement snapshots anchored to an actual bank statement; account ledger is unchanged.
+// v26: Refunds adjust the card ledger and the posting period, never an earlier statement payment.
 function creditCycle(){const c=finance().creditCycle||{};return {statementDay:Math.max(1,Math.min(31,Number(c.statementDay)||8)),dueDay:Math.max(1,Math.min(31,Number(c.dueDay)||16))}}
 function ccDate(y,m,day){return iso(new Date(y,m,Math.min(day,new Date(y,m+1,0).getDate())))}
 function ccStatementFor(date,day){const [y,m]=date.slice(0,7).split('-').map(Number);const current=ccDate(y,m-1,day);return date<=current?current:ccDate(y,m,day)}
@@ -461,7 +461,7 @@ function creditStatementLedger(){
  const f=finance(),cycle=creditCycle(),today=iso(new Date()),anchor=f.creditStatementAnchor;
  if(!anchor||!/^\d{4}-\d{2}-\d{2}$/.test(anchor.date)||!Number.isSafeInteger(anchor.amount)||anchor.amount<0)return null;
  const movements=[];
- for(const t of data.transactions){if(t.date<=anchor.date||!isCredit(t))continue;movements.push({date:t.date,id:t.id,amount:signedSpend(t),label:t.merchant||'Purchase',payment:false})}
+ for(const t of data.transactions){if(t.date<=anchor.date||!isCredit(t))continue;movements.push({date:t.date,id:t.id,amount:signedSpend(t),label:t.merchant||'Purchase',payment:false,refund:!!t.refund})}
  for(const t of f.entries){if(t.date<=anchor.date)continue;let amount=0,payment=false;
   if(t.type==='transfer'){if(t.to==='credit'){amount=-t.amount;payment=true}else if(t.from==='credit')amount=t.amount}
   else if(t.type==='income'&&t.account==='credit'){amount=-t.amount;payment=true}
@@ -473,7 +473,7 @@ function creditStatementLedger(){
  const applyCredit=(amount)=>{let remaining=amount;for(const r of rows){const take=Math.min(remaining,Math.max(0,r.newCharges-r.paid));r.paid+=take;remaining-=take;if(!remaining)break}return remaining};
  const snapshot=(date)=>{const prior=rows.at(-1);const outstanding=rows.reduce((n,r)=>n+Math.max(0,r.newCharges-r.paid),0);
   // A new statement's full closing balance includes earlier unpaid statements.
-  // Only the incremental amount becomes a new obligation, preventing duplication.
+  // Only net new posted spending becomes a new obligation; refunds remain in their posting period, not as payments on older statements.
   const fresh=Math.max(0,current-outstanding);
   const row={date,due:ccDue(date,cycle.dueDay),original:Math.max(0,current),newCharges:fresh,paid:0,items:[],opening:false};
   rows.push(row);if(unallocated){unallocated=applyCredit(unallocated)};
@@ -484,14 +484,14 @@ function creditStatementLedger(){
  let index=0;
  while(next<=today){
   while(index<movements.length&&movements[index].date<=next){const v=movements[index++];current+=v.amount;
-   if(v.amount<0){unallocated=applyCredit(unallocated-v.amount)}
+   if(v.payment){unallocated=applyCredit(unallocated-v.amount)}
    else rows.at(-1).items.push(v);
   }
   snapshot(next);cursor.setMonth(cursor.getMonth()+1);next=ccDate(cursor.getFullYear(),cursor.getMonth(),cycle.statementDay);
  }
- while(index<movements.length&&movements[index].date<=today){const v=movements[index++];current+=v.amount;if(v.amount<0)unallocated=applyCredit(unallocated-v.amount)}
+ while(index<movements.length&&movements[index].date<=today){const v=movements[index++];current+=v.amount;if(v.payment)unallocated=applyCredit(unallocated-v.amount)}
  const billed=rows.reduce((n,r)=>n+Math.max(0,r.newCharges-r.paid),0);
- const unbilled=current-billed+unallocated;
+ const unbilled=current-billed;
  const actual=financeMovements().credit;
  // The opening statement is a reference, not an adjustment to the account balance.
  // The reconciliation reflects any gap between that reference and the recorded ledger.
@@ -504,8 +504,8 @@ function renderCreditStatements(){
  const {rows,billed,unbilled,balance,reconcile,today}=l;
  const overdue=rows.reduce((n,r)=>n+(r.due<today?Math.max(0,r.newCharges-r.paid):0),0);
  const nextDue=rows.find(r=>r.newCharges-r.paid>0);
- summary.innerHTML=`<div class="finance-account-row"><span>Current card balance (authoritative)</span><strong>${money(balance)}</strong></div><div class="finance-account-row"><span>Unpaid issued statements</span><strong>${money(billed)}</strong></div><div class="finance-account-row"><span>Unbilled balance</span><strong>${money(unbilled)}</strong></div>${l.unallocated?`<div class="finance-account-row"><span>Unallocated payments / credits</span><strong>${money(l.unallocated)}</strong></div>`:''}<div class="finance-account-row"><span>Next statement payment outstanding</span><strong>${nextDue?money(Math.max(0,nextDue.newCharges-nextDue.paid))+' · '+nextDue.due:'None'}</strong></div>${overdue?`<p class="warning">Overdue statement balance: ${money(overdue)}</p>`:''}${Math.abs(reconcile)>1?`<p class="warning">Statement reconciliation difference: ${money(reconcile)}. Check the opening statement, posting dates and historical records. The card account balance is unchanged.</p>`:''}<p class="muted">Opening statement ${l.anchor.date}: ${money(l.anchor.amount)}. Statement day ${l.cycle.statementDay}; payment due day ${l.cycle.dueDay} of the following month. Record card purchases on their posting dates.</p>`;
- history.innerHTML=rows.slice(-18).reverse().map(r=>{const due=Math.max(0,r.newCharges-r.paid);const status=due===0?'Paid':r.due<today?'Overdue':r.paid>0?'Part paid':'Unpaid';return `<details class="cc-statement-row"><summary>${esc(r.date)} · ${esc(status)} · ${money(due)} remaining</summary><div class="finance-account-row"><span>Statement closing balance</span><strong>${money(r.original)}</strong></div><div class="finance-account-row"><span>New amount allocated to this statement</span><strong>${money(r.newCharges)}</strong></div><div class="finance-account-row"><span>Payment due</span><strong>${r.due}</strong></div><div class="finance-account-row"><span>Payments / credits allocated</span><strong>${money(r.paid)}</strong></div><div class="finance-account-row"><span>Outstanding</span><strong>${money(due)}</strong></div>${r.opening?'<p class="muted">Actual opening statement entered manually.</p>':''}</details>`}).join('');
+ summary.innerHTML=`<div class="finance-account-row"><span>Current card balance (authoritative)</span><strong>${money(balance)}</strong></div><div class="finance-account-row"><span>Unpaid issued statements</span><strong>${money(billed)}</strong></div><div class="finance-account-row"><span>Unbilled balance</span><strong>${money(unbilled)}</strong></div>${l.unallocated?`<div class="finance-account-row"><span>Unallocated payments</span><strong>${money(l.unallocated)}</strong></div>`:''}<div class="finance-account-row"><span>Next statement payment outstanding</span><strong>${nextDue?money(Math.max(0,nextDue.newCharges-nextDue.paid))+' · '+nextDue.due:'None'}</strong></div>${overdue?`<p class="warning">Overdue statement balance: ${money(overdue)}</p>`:''}${Math.abs(reconcile)>1?`<p class="warning">Statement reconciliation difference: ${money(reconcile)}. Check the opening statement, posting dates and historical records. The card account balance is unchanged.</p>`:''}<p class="muted">Opening statement ${l.anchor.date}: ${money(l.anchor.amount)}. Statement day ${l.cycle.statementDay}; payment due day ${l.cycle.dueDay} of the following month. Record card purchases on their posting dates.</p>`;
+ history.innerHTML=rows.slice(-18).reverse().map(r=>{const due=Math.max(0,r.newCharges-r.paid);const status=due===0?'Paid':r.due<today?'Overdue':r.paid>0?'Part paid':'Unpaid';return `<details class="cc-statement-row"><summary>${esc(r.date)} · ${esc(status)} · ${money(due)} remaining</summary><div class="finance-account-row"><span>Statement closing balance</span><strong>${money(r.original)}</strong></div><div class="finance-account-row"><span>New amount allocated to this statement</span><strong>${money(r.newCharges)}</strong></div><div class="finance-account-row"><span>Payment due</span><strong>${r.due}</strong></div><div class="finance-account-row"><span>Transfers / payments allocated</span><strong>${money(r.paid)}</strong></div><div class="finance-account-row"><span>Outstanding</span><strong>${money(due)}</strong></div>${r.opening?'<p class="muted">Actual opening statement entered manually.</p>':''}</details>`}).join('');
 }
 function renderCreditCycleSettings(){const c=creditCycle(),a=finance().creditStatementAnchor;for(const [id,val] of [['ccStatementDay',c.statementDay],['ccDueDay',c.dueDay]]){const el=$(id);if(!el)return;el.innerHTML=Array.from({length:31},(_,i)=>`<option value="${i+1}">${i+1}</option>`).join('');el.value=String(val)}$('ccOpeningStatementDate').value=a?.date||'';$('ccOpeningStatementAmount').value=a? (a.amount/100).toFixed(2):''}
 
