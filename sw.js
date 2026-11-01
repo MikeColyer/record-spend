@@ -1,5 +1,5 @@
 // v8: prefer fresh application files when online, use cached copies offline.
-const CACHE='record-spend-v29';
+const CACHE='record-spend-v30';
 const ASSETS=['./','./index.html','./style.css','./app.js','./manifest.webmanifest','./icon.png','./icon-512.png'];
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(async cache=>{
@@ -35,3 +35,5 @@ self.addEventListener('fetch',event=>{
     }
   })());
 });
+
+self.addEventListener('message',event=>{if(event.data?.type==='RECORD_SPEND_VERSION')event.ports?.[0]?.postMessage({version:'v30'});});

@@ -561,3 +561,26 @@ $('recurringForm').onsubmit=async e=>{e.preventDefault();const f=finance(),type=
 };
 if('serviceWorker'in navigator&&location.protocol==='https:')navigator.serviceWorker.register('./sw.js', {updateViaCache:'none'}).then(reg=>reg.update()).catch(()=>{});}catch(e){alert('Local storage could not be opened. Use Safari on a secure HTTPS site. '+e.message)}}
 document.addEventListener('DOMContentLoaded',init);
+
+// Build identification. Read the loaded files rather than assuming a successful deployment.
+const RECORD_SPEND_JS_VERSION='v30';
+function showRecordSpendVersions(){
+ const el=document.getElementById('appVersionDetails');if(!el)return;
+ const css=getComputedStyle(document.documentElement).getPropertyValue('--rs-stylesheet-version').trim().replace(/["']/g,'')||'Unknown';
+ const html=document.documentElement.dataset.build||'Unknown';
+ const row=(name,value)=>'<span>'+name+'</span><strong>'+value+'</strong>';
+ const render=sw=>{el.innerHTML=row('Application JavaScript',RECORD_SPEND_JS_VERSION)+row('HTML',html)+row('Stylesheet',css)+row('Service worker',sw);};
+ render('Checking…');
+ if(!('serviceWorker' in navigator)){render('Not supported');return;}
+ navigator.serviceWorker.ready.then(reg=>{
+  const worker=navigator.serviceWorker.controller||reg.active;
+  if(!worker){render('Not controlling this page');return;}
+  const channel=new MessageChannel();
+  channel.port1.onmessage=e=>{render(e.data?.version||'Unknown');channel.port1.close();};
+  worker.postMessage({type:'RECORD_SPEND_VERSION'},[channel.port2]);
+  // A worker that predates version reporting may never answer.
+  setTimeout(()=>{if(el.textContent.includes('Checking…'))render('Older worker / no reply');},1800);
+ }).catch(()=>render('Unavailable'));
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',showRecordSpendVersions);
+else showRecordSpendVersions();

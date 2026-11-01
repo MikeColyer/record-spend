@@ -67,3 +67,7 @@
 .budget-trace-content{text-align:left;white-space:normal;border:1px solid var(--border,#d5d9dd);border-radius:10px;padding:12px;line-height:1.55}
 .budget-trace-item{padding:10px 0;border-top:1px solid var(--border,#d5d9dd);font-size:.88rem}
 .budget-trace-item small{font-weight:normal;opacity:.7}
+
+/* Record Spend stylesheet version */
+:root{--rs-stylesheet-version:"v30"}
+#appVersionDetails{display:grid;grid-template-columns:1fr auto;gap:8px 14px;font-size:.9rem}#appVersionDetails strong{font-variant-numeric:tabular-nums}
