@@ -69,7 +69,7 @@
 .budget-trace-item small{font-weight:normal;opacity:.7}
 
 /* Record Spend stylesheet version */
-:root{--rs-stylesheet-version:"v31"}
+:root{--rs-stylesheet-version:"v32"}
 #appVersionDetails{display:grid;grid-template-columns:1fr auto;gap:8px 14px;font-size:.9rem}#appVersionDetails strong{font-variant-numeric:tabular-nums}
 
-:root{--rs-stylesheet-version:"v31";}
+:root{--rs-stylesheet-version:"v32";}

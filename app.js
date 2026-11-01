@@ -276,7 +276,7 @@ function provisionEvents(p,through,includeFuture=false){
  for(let key=start,n=0;key<=end&&n<600;n++){
   const snap=f.provisionMonths[p.id]?.[key];
   if(snap!==undefined)events.push({date:key+'-01',order:0,amount:snap,kind:'accrual',month:key});
-  const next=new Date(Number(key.slice(0,4)),Number(key.slice(5,7)),1);next.setMonth(next.getMonth()+1);key=ym(next);
+  const next=new Date(Number(key.slice(0,4)),Number(key.slice(5,7)),1);key=ym(next);
  }
  for(const t of provisionTransactions(p))if(t.date>=p.start&&t.date<=through)events.push({date:t.date,order:1,amount:signedSpend(t),kind:'payment',tx:t});
  if(includeFuture&&p.type==='bill'&&p.ruleId){
@@ -320,7 +320,7 @@ function provisionAccrue(){
   // Freeze a month at its first eligible opening. Do not backfill months before setup.
   for(let key=first,n=0;key<=current&&n<600;n++){
    if(f.provisionMonths[p.id][key]===undefined){f.provisionMonths[p.id][key]=provisionRequired(p,key);changed=true}
-   const d=new Date(Number(key.slice(0,4)),Number(key.slice(5,7)),1);d.setMonth(d.getMonth()+1);key=ym(d);
+   const d=new Date(Number(key.slice(0,4)),Number(key.slice(5,7)),1);key=ym(d);
   }
  }
  return changed;
@@ -586,7 +586,7 @@ if('serviceWorker'in navigator&&location.protocol==='https:')navigator.serviceWo
 document.addEventListener('DOMContentLoaded',init);
 
 // Build identification. Read the loaded files rather than assuming a successful deployment.
-const RECORD_SPEND_JS_VERSION='v31';
+const RECORD_SPEND_JS_VERSION='v32';
 function showRecordSpendVersions(){
  const el=document.getElementById('appVersionDetails');if(!el)return;
  const css=getComputedStyle(document.documentElement).getPropertyValue('--rs-stylesheet-version').trim().replace(/["']/g,'')||'Unknown';
