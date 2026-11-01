@@ -73,3 +73,15 @@
 #appVersionDetails{display:grid;grid-template-columns:1fr auto;gap:8px 14px;font-size:.9rem}#appVersionDetails strong{font-variant-numeric:tabular-nums}
 
 :root{--rs-stylesheet-version:"v32";}
+
+/* v34 Dashboard accordions; original data targets remain in each body. */
+#dashboard .dashboard-accordion { border:0; margin:0; }
+#dashboard .dashboard-accordion-head { display:flex; align-items:center; gap:10px; cursor:pointer; list-style:none; min-height:44px; }
+#dashboard .dashboard-accordion-head::-webkit-details-marker { display:none; }
+#dashboard .dashboard-accordion-label { font-size:1.18rem; font-weight:750; flex:1; min-width:0; }
+#dashboard .dashboard-accordion-total { font-size:1rem; font-weight:750; text-align:right; overflow-wrap:anywhere; }
+#dashboard .dashboard-accordion-chevron { font-size:1.4rem; color:#647e7a; transition:transform .15s; }
+#dashboard details[open] > .dashboard-accordion-head .dashboard-accordion-chevron { transform:rotate(180deg); }
+#dashboard .dashboard-accordion-body { padding-top:12px; }
+#dashboard .dashboard-accordion-head:focus-visible { outline:2px solid #1b6b57; outline-offset:4px; border-radius:6px; }
+@media (max-width:390px) { #dashboard .dashboard-accordion-label{font-size:1.05rem;} #dashboard .dashboard-accordion-total{font-size:.9rem;} }

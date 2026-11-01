@@ -546,7 +546,25 @@ function renderCreditStatements(){
 }
 function renderCreditCycleSettings(){const c=creditCycle(),a=finance().creditStatementAnchor;for(const [id,val] of [['ccStatementDay',c.statementDay],['ccDueDay',c.dueDay]]){const el=$(id);if(!el)return;el.innerHTML=Array.from({length:31},(_,i)=>`<option value="${i+1}">${i+1}</option>`).join('');el.value=String(val)}$('ccOpeningStatementDate').value=a?.date||'';$('ccOpeningStatementAmount').value=a? (a.amount/100).toFixed(2):''}
 
-function renderDashboard(){if(provisionAccrue())void dbSave();renderCreditStatements();renderBudgetPlan();renderTrend();renderProjection();provisionDashboard();let ts=forMonth(month),total=sum(ts),budget=Object.values(data.budgets).reduce((a,b)=>a+b,0);$('monthLabel').textContent=label(month);$('monthSpend').textContent=money(total);$('monthBudget').textContent=money(budget);bars($('categoryBars'),data.categories.map(c=>[c,sum(ts.filter(t=>t.category===c))]).filter(x=>x[1]!==0),Math.max(total,1));bars($('cardBars'),data.cards.map(c=>[c,sum(ts.filter(t=>t.card===c))]),Math.max(total,1));let used=data.categories.filter(c=>(data.budgets[c]||0)>0);$('budgetBars').innerHTML=used.length?used.map(c=>{let spent=sum(ts.filter(t=>t.category===c)),limit=data.budgets[c];return `<div class="bar-item"><div class="inline"><span>${esc(c)}</span><strong>${money(spent)} / ${money(limit)}</strong></div><div class="bar-track"><div class="bar-fill" style="width:${Math.min(100,Math.max(0,spent/limit*100))}%"></div></div>${spent>limit?'<small class="warning">Over budget</small>':''}</div>`}).join(''):'<p class="muted">Set monthly category budgets in Settings.</p>'}
+function renderDashboard(){if(provisionAccrue())void dbSave();renderCreditStatements();renderBudgetPlan();renderTrend();renderProjection();provisionDashboard();let ts=forMonth(month),total=sum(ts),budget=Object.values(data.budgets).reduce((a,b)=>a+b,0);$('monthLabel').textContent=label(month);$('monthSpend').textContent=money(total);$('monthBudget').textContent=money(budget);bars($('categoryBars'),data.categories.map(c=>[c,sum(ts.filter(t=>t.category===c))]).filter(x=>x[1]!==0),Math.max(total,1));bars($('cardBars'),data.cards.map(c=>[c,sum(ts.filter(t=>t.card===c))]),Math.max(total,1));let used=data.categories.filter(c=>(data.budgets[c]||0)>0);$('budgetBars').innerHTML=used.length?used.map(c=>{let spent=sum(ts.filter(t=>t.category===c)),limit=data.budgets[c];return `<div class="bar-item"><div class="inline"><span>${esc(c)}</span><strong>${money(spent)} / ${money(limit)}</strong></div><div class="bar-track"><div class="bar-fill" style="width:${Math.min(100,Math.max(0,spent/limit*100))}%"></div></div>${spent>limit?'<small class="warning">Over budget</small>':''}</div>`}).join(''):'<p class="muted">Set monthly category budgets in Settings.</p>';updateDashboardAccordionTotals();}
+
+// v34: dashboard presentation only. All original calculation targets remain in the DOM.
+function updateDashboardAccordionTotals(){
+ const text=(id)=>document.getElementById(id)?.textContent?.trim()||'—';
+ const set=(id,value)=>{const el=document.getElementById(id);if(el)el.textContent=value;};
+ set('dashPositionTotal',text('netPosition'));
+ const year=document.getElementById('yearTotals');
+ const yearNet=year?.children?.[2]?.querySelector('strong')?.textContent?.trim();
+ set('dashIncomeTotal',yearNet||'—');
+ set('dashPlanTotal',document.querySelector('#budgetPlanSummary .finance-total')?.textContent?.trim()||'Not set');
+ set('dashProvisionTotal',document.querySelector('#annualProvisionDashboard .finance-total')?.textContent?.trim()||'Not set');
+ set('dashProjectedTotal',text('projectedBalance'));
+ const ts=forMonth(month),used=data.categories.filter(c=>(data.budgets[c]||0)>0);
+ const spent=used.reduce((n,c)=>n+sum(ts.filter(t=>t.category===c)),0);
+ const budget=used.reduce((n,c)=>n+(data.budgets[c]||0),0);
+ set('dashBudgetTotal',budget?`${money(spent)} / ${money(budget)} · ${Math.round(spent/budget*100)}%`:'No budgets set');
+}
+
 function renderHistory(){let q=$('search').value.toLowerCase().trim();$('historyMonth').textContent=label(histMonth);let ts=forMonth(histMonth).filter(t=>[t.merchant,t.category,t.card,t.notes].join(' ').toLowerCase().includes(q)).sort((a,b)=>b.date.localeCompare(a.date)||b.created-a.created);$('historyList').innerHTML=ts.length?ts.map(t=>`<button type="button" class="transaction" data-id="${esc(t.id)}"><span class="transaction-line"><strong>${t.recurringKey?'↻ ':''}${t.refund?'↩ Refund · ':''}${t.provisionId?'◈ ':''}${esc(t.merchant||'Purchase')}</strong><span class="tx-sep"> · </span><span>${esc(t.date)}</span><span class="tx-sep"> · </span><span>${esc(t.category)}</span><span class="tx-sep"> · </span><span>${esc(t.card)}</span><span class="tx-sep"> · </span><strong class="transaction-amount">${money(signedSpend(t))}</strong></span></button>`).join(''):'<p class="muted">No matching transactions.</p>';const extras=financeHistory();if(extras.length){const all=[...extras,...ts.map(t=>({date:t.date,created:t.created,html:`<button type="button" class="transaction" data-id="${esc(t.id)}"><span class="transaction-line"><strong>${t.recurringKey?'↻ ':''}${t.refund?'↩ Refund · ':''}${t.provisionId?'◈ ':''}${esc(t.merchant||'Purchase')}</strong> · ${esc(t.date)} · ${esc(t.category)} · ${esc(t.card)} · <strong class="transaction-amount">${money(signedSpend(t))}</strong></span></button>`}))].sort((a,b)=>b.date.localeCompare(a.date)||b.created-a.created);$('historyList').innerHTML=all.map(x=>x.html).join('')} $('historyList').querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>openEdit(b.dataset.id));$('historyList').querySelectorAll('[data-finance-id]').forEach(b=>b.onclick=()=>openFinanceEdit(b.dataset.financeId))}
 async function saveRender(){provisionAccrue();await dbSave();renderAll()}
 function showView(name){document.querySelectorAll('main section.view').forEach(s=>{s.classList.toggle('active',s.id===name);s.hidden=s.id!==name});document.querySelectorAll('nav button[data-view]').forEach(b=>b.classList.toggle('selected',b.dataset.view===name));if(name==='dashboard'){renderDashboard();renderFinance();}if(name==='history')renderHistory()}
@@ -586,7 +604,7 @@ if('serviceWorker'in navigator&&location.protocol==='https:')navigator.serviceWo
 document.addEventListener('DOMContentLoaded',init);
 
 // Build identification. Read the loaded files rather than assuming a successful deployment.
-const RECORD_SPEND_JS_VERSION='v32';
+const RECORD_SPEND_JS_VERSION='v34';
 function showRecordSpendVersions(){
  const el=document.getElementById('appVersionDetails');if(!el)return;
  const css=getComputedStyle(document.documentElement).getPropertyValue('--rs-stylesheet-version').trim().replace(/["']/g,'')||'Unknown';
