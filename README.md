@@ -36,6 +36,6 @@ Financial records are stored locally on the device using IndexedDB, rather than 
 
 Important: Regularly export a JSON backup, particularly before updating the app. Browser and Home Screen installations may have separate local data stores. Removing the app or clearing website data may permanently delete records that have not been backed up.
 
-Version Record Spend 2.0 — v23
+Version Record Spend 2.0 — v32
 
 Personal project, developed and refined through practical use.
