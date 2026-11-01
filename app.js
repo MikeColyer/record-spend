@@ -54,6 +54,7 @@ function selectOptions(el,values){let old=el.value;el.innerHTML=values.map(x=>`<
 function renderChoices(){let root=$('cardChoices');root.innerHTML=data.cards.map((name,i)=>`<button type="button" class="${i===selectedCard?'selected':''}" aria-pressed="${i===selectedCard}" data-card="${i}">${esc(name)}</button>`).join('');root.querySelectorAll('button').forEach(b=>b.onclick=()=>{selectedCard=Number(b.dataset.card);renderChoices()})}
 function normalizeCategories(){const i=data.categories.indexOf('Other');if(i!==-1&&i!==data.categories.length-1){data.categories.splice(i,1);data.categories.push('Other')}}
 function renderSettings(){
+  renderProvisionRolloverStatus();
   if($('plannedIncome'))$('plannedIncome').value=expectedPlanIncome()===null?'':(expectedPlanIncome()/100).toFixed(2);
   data.cards.forEach((v,i)=>$('card'+i).value=v);
   $('budgetInputs').innerHTML=data.categories.map(c=>`<label>${esc(c)}<input type="number" inputmode="decimal" min="0" step="0.01" data-budget="${esc(c)}" value="${((data.budgets[c]||0)/100).toFixed(2)}"></label>`).join('');
@@ -324,6 +325,28 @@ function provisionAccrue(){
  }
  return changed;
 }
+// v31: explicit, auditable reconciliation of the current month's virtual provisions.
+// A monthly snapshot is added only when absent; locked historical values are untouched.
+async function reconcileProvisionsNow(){
+ const f=finance(),key=ym(new Date()),before=Object.fromEntries(f.provisions.map(p=>[p.id,f.provisionMonths[p.id]?.[key]]));
+ const changed=provisionAccrue();
+ const added=f.provisions.filter(p=>before[p.id]===undefined&&f.provisionMonths[p.id]?.[key]!==undefined);
+ const total=added.reduce((sum,p)=>sum+f.provisionMonths[p.id][key],0);
+ const result={month:key,added:added.length,total,changed,checkedAt:new Date().toISOString()};
+ f.provisionRollover=result;
+ await dbSave();
+ renderAll();
+ renderProvisionRolloverStatus();
+ return result;
+}
+function renderProvisionRolloverStatus(){
+ const el=$('provisionRolloverStatus');if(!el)return;
+ const f=finance(),key=ym(new Date()),eligible=f.provisions.filter(p=>!p.paused&&p.start.slice(0,7)<=key);
+ const recorded=eligible.filter(p=>Number.isSafeInteger(f.provisionMonths[p.id]?.[key]));
+ const sum=recorded.reduce((n,p)=>n+f.provisionMonths[p.id][key],0);
+ const last=f.provisionRollover;
+ el.textContent=`${key}: ${recorded.length} of ${eligible.length} active provisions recorded; monthly contributions ${money(sum)}. `+(last?`Last verified ${last.checkedAt.slice(0,16).replace('T',' ')} UTC; added ${last.added}.`:'No explicit verification recorded yet.');
+}
 function provisionDashboard(){
  const root=$('annualProvisionDashboard');if(!root)return;
  const f=finance(),key=ym(month),today=iso(new Date()),last=iso(new Date(month.getFullYear(),month.getMonth()+1,0));
@@ -563,7 +586,7 @@ if('serviceWorker'in navigator&&location.protocol==='https:')navigator.serviceWo
 document.addEventListener('DOMContentLoaded',init);
 
 // Build identification. Read the loaded files rather than assuming a successful deployment.
-const RECORD_SPEND_JS_VERSION='v30';
+const RECORD_SPEND_JS_VERSION='v31';
 function showRecordSpendVersions(){
  const el=document.getElementById('appVersionDetails');if(!el)return;
  const css=getComputedStyle(document.documentElement).getPropertyValue('--rs-stylesheet-version').trim().replace(/["']/g,'')||'Unknown';
@@ -584,3 +607,16 @@ function showRecordSpendVersions(){
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',showRecordSpendVersions);
 else showRecordSpendVersions();
+
+// v31 diagnostic control: runs after the existing app has initialised.
+document.addEventListener('DOMContentLoaded',()=>{
+ const button=$('verifyProvisionRollover');
+ if(!button)return;
+ button.addEventListener('click',async()=>{
+  button.disabled=true;
+  try{const r=await reconcileProvisionsNow();$('provisionRolloverStatus').textContent+=` Verification completed: ${r.added} new snapshots, ${money(r.total)}.`;}
+  catch(e){$('provisionRolloverStatus').textContent='Verification failed: '+String(e?.message||e);}
+  finally{button.disabled=false;}
+ });
+ renderProvisionRolloverStatus();
+});
