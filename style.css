@@ -73,18 +73,3 @@
 #appVersionDetails{display:grid;grid-template-columns:1fr auto;gap:8px 14px;font-size:.9rem}#appVersionDetails strong{font-variant-numeric:tabular-nums}
 
 :root{--rs-stylesheet-version:"v32";}
-
-/* v33 Dashboard summary-first accordions */
-.dashboard-accordion{padding:0;overflow:hidden}
-.dashboard-accordion-summary{list-style:none;cursor:pointer;position:relative;padding:19px 48px 19px 19px;min-height:74px}
-.dashboard-accordion-summary::-webkit-details-marker{display:none}
-.dashboard-accordion-heading{font-size:19px;font-weight:700;display:block;line-height:1.3}
-.dashboard-accordion-summary .finance-total{font-size:25px;margin:10px 0 0}
-.dashboard-total{margin-top:9px;display:flex;flex-direction:column;gap:3px}
-.dashboard-total strong{font-size:24px;color:#1b6454;overflow-wrap:anywhere}
-.dashboard-total small{font-size:12px;color:#6c7e83}
-.dashboard-chevron{position:absolute;right:20px;top:22px;font-size:24px;color:#54756e;transition:transform .15s}
-.dashboard-accordion[open] .dashboard-chevron{transform:rotate(180deg)}
-.dashboard-accordion-content{padding:0 19px 19px;border-top:1px solid #edf1ee}
-.dashboard-accordion-content>p:first-child{margin-top:14px}
-.dashboard-accordion-content .finance-total{margin-top:12px}
