@@ -332,9 +332,21 @@ function provisionDashboard(){
   const accrual=f.provisionMonths[p.id]?.[key];
   if(accrual!==undefined)contributions+=accrual;
   else if(key>=p.start.slice(0,7)&&last>=today&&!p.paused)contributions+=provisionRequired(p,key);
-  const state=provisionState(p,last,last>=today);
-  covered+=state.coveredByMonth[key]||0;shortfall+=state.shortfallByMonth[key]||0;for(const item of state.shortfallDetailsByMonth[key]||[])shortfallDetails.push({...item,provision:p.name||p.title||'Annual provision'});
-  total+=provisionState(p,today).balance;
+  // v28: The dashboard must credit an unrecorded monthly contribution at
+  // the start of the month before testing the linked payment for coverage.
+  // Simulate missing accruals in a temporary ledger; never alter saved data.
+  const savedMonths=f.provisionMonths;
+  const simulatedMonths=Object.fromEntries(Object.entries(savedMonths).map(([id,months])=>[id,{...months}]));
+  try{
+   f.provisionMonths=simulatedMonths;
+   if(!p.paused&&key>=ym(new Date())&&key>=p.start.slice(0,7)&&simulatedMonths[p.id]?.[key]===undefined){
+    (simulatedMonths[p.id]??={})[key]=provisionRequired(p,key);
+   }
+   const state=provisionState(p,last,last>=today);
+   covered+=state.coveredByMonth[key]||0;shortfall+=state.shortfallByMonth[key]||0;
+   for(const item of state.shortfallDetailsByMonth[key]||[])shortfallDetails.push({...item,provision:p.name||p.title||'Annual provision'});
+   total+=provisionState(p,today).balance;
+  }finally{f.provisionMonths=savedMonths;}
  }
  const adjusted=base-contributions+covered;
  root.innerHTML=`<div class="finance-total ${adjusted<0?'negative':''}">${adjusted>=0?'+':''}${money(adjusted)}</div><p class="muted">${esc(label(month))} · ${forecast===null?'actual':'projected'} surplus after annual allowances</p><div class="provision-summary-row"><span>${forecast===null?'Actual':'Projected'} month surplus</span><strong>${base>=0?'+':''}${money(base)}</strong></div><div class="provision-summary-row"><span>Monthly provision required</span><strong>−${money(contributions)}</strong></div><div class="provision-summary-row"><span>Provisioned spending covered</span><strong>+${money(covered)}</strong></div><div class="provision-summary-row"><span>Accumulated provision (today)</span><strong>${money(total)}</strong></div>${shortfall>0?`<details class="provision-shortfall"><summary class="warning">⚠ ${money(shortfall)} of provision-linked spending is not covered by accumulated provisions and remains included in the adjusted surplus. <span class="shortfall-hint">Show breakdown</span></summary><div class="shortfall-breakdown"><p class="muted">Uncovered amounts by provision and transaction. These amounts remain part of actual spending; they are not deducted again.</p>${shortfallDetails.map(item=>`<div class="shortfall-item"><div><strong>${esc(item.provision)}</strong><small>${esc(item.description)} · ${esc(item.date)}${item.future?' · Scheduled':''}</small><small>Payment ${money(item.amount)} · Covered ${money(item.covered)}</small></div><strong>${money(item.uncovered)} uncovered</strong></div>`).join('')}</div></details>`:''}<p class="muted">Provisions do not move money between accounts. Existing actual spending and account balances are unchanged.</p>`;
