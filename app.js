@@ -347,32 +347,38 @@ function renderProvisionRolloverStatus(){
  const last=f.provisionRollover;
  el.textContent=`${key}: ${recorded.length} of ${eligible.length} active provisions recorded; monthly contributions ${money(sum)}. `+(last?`Last verified ${last.checkedAt.slice(0,16).replace('T',' ')} UTC; added ${last.added}.`:'No explicit verification recorded yet.');
 }
+// v36: one authoritative provision calculation for both dashboard cards.
+function monthlyProvisionCoverage(key){
+ const f=finance(),today=iso(new Date()),last=iso(new Date(Number(key.slice(0,4)),Number(key.slice(5,7)),0));
+ const result={covered:0,shortfall:0,paid:0,rows:[],shortfallDetails:[],contributions:0,total:0};
+ for(const p of f.provisions){
+  const accrual=f.provisionMonths[p.id]?.[key];
+  if(accrual!==undefined)result.contributions+=accrual;
+  else if(key>=p.start.slice(0,7)&&last>=today&&!p.paused)result.contributions+=provisionRequired(p,key);
+  const savedMonths=f.provisionMonths;
+  const simulatedMonths=Object.fromEntries(Object.entries(savedMonths).map(([id,months])=>[id,{...months}]));
+  try{
+   f.provisionMonths=simulatedMonths;
+   if(!p.paused&&key>=ym(new Date())&&key>=p.start.slice(0,7)&&simulatedMonths[p.id]?.[key]===undefined)
+    (simulatedMonths[p.id]??={})[key]=provisionRequired(p,key);
+   const state=provisionState(p,last,last>=today);
+   const covered=state.coveredByMonth[key]||0,shortfall=state.shortfallByMonth[key]||0;
+   const paid=provisionTransactions(p).filter(t=>t.date.slice(0,7)===key&&t.date>=p.start).reduce((n,t)=>n+signedSpend(t),0);
+   const futurePaid=provisionEvents(p,last,last>=today).filter(e=>e.kind==='future'&&e.date.slice(0,7)===key).reduce((n,e)=>n+e.amount,0);
+   result.covered+=covered;result.shortfall+=shortfall;result.paid+=paid+futurePaid;
+   if(paid||futurePaid||covered||shortfall)result.rows.push({name:p.name||p.title||'Annual provision',paid:paid+futurePaid,covered,shortfall,future:futurePaid});
+   for(const item of state.shortfallDetailsByMonth[key]||[])result.shortfallDetails.push({...item,provision:p.name||p.title||'Annual provision'});
+   result.total+=provisionState(p,today).balance;
+  }finally{f.provisionMonths=savedMonths;}
+ }
+ return result;
+}
 function provisionDashboard(){
  const root=$('annualProvisionDashboard');if(!root)return;
  const f=finance(),key=ym(month),today=iso(new Date()),last=iso(new Date(month.getFullYear(),month.getMonth()+1,0));
  if(!f.provisions.length){root.innerHTML='<p class="muted">No annual provisions yet. Add them in Settings to see your provision-adjusted spending outlook.</p>';return}
  const actual=monthPerformance(key).net,forecast=projectedMonthSurplus(month),base=forecast===null?actual:forecast;
- let contributions=0,covered=0,shortfall=0,total=0;const shortfallDetails=[];
- for(const p of f.provisions){
-  const accrual=f.provisionMonths[p.id]?.[key];
-  if(accrual!==undefined)contributions+=accrual;
-  else if(key>=p.start.slice(0,7)&&last>=today&&!p.paused)contributions+=provisionRequired(p,key);
-  // v28: The dashboard must credit an unrecorded monthly contribution at
-  // the start of the month before testing the linked payment for coverage.
-  // Simulate missing accruals in a temporary ledger; never alter saved data.
-  const savedMonths=f.provisionMonths;
-  const simulatedMonths=Object.fromEntries(Object.entries(savedMonths).map(([id,months])=>[id,{...months}]));
-  try{
-   f.provisionMonths=simulatedMonths;
-   if(!p.paused&&key>=ym(new Date())&&key>=p.start.slice(0,7)&&simulatedMonths[p.id]?.[key]===undefined){
-    (simulatedMonths[p.id]??={})[key]=provisionRequired(p,key);
-   }
-   const state=provisionState(p,last,last>=today);
-   covered+=state.coveredByMonth[key]||0;shortfall+=state.shortfallByMonth[key]||0;
-   for(const item of state.shortfallDetailsByMonth[key]||[])shortfallDetails.push({...item,provision:p.name||p.title||'Annual provision'});
-   total+=provisionState(p,today).balance;
-  }finally{f.provisionMonths=savedMonths;}
- }
+ const {contributions,covered,shortfall,total,shortfallDetails}=monthlyProvisionCoverage(key);
  const adjusted=base-contributions+covered;
  root.innerHTML=`<div class="finance-total ${adjusted<0?'negative':''}">${adjusted>=0?'+':''}${money(adjusted)}</div><p class="muted">${esc(label(month))} · ${forecast===null?'actual':'projected'} surplus after annual allowances</p><div class="provision-summary-row"><span>${forecast===null?'Actual':'Projected'} month surplus</span><strong>${base>=0?'+':''}${money(base)}</strong></div><div class="provision-summary-row"><span>Monthly provision required</span><strong>−${money(contributions)}</strong></div><div class="provision-summary-row"><span>Provisioned spending covered</span><strong>+${money(covered)}</strong></div><div class="provision-summary-row"><span>Accumulated provision (today)</span><strong>${money(total)}</strong></div>${shortfall>0?`<details class="provision-shortfall"><summary class="warning">⚠ ${money(shortfall)} of provision-linked spending is not covered by accumulated provisions and remains included in the adjusted surplus. <span class="shortfall-hint">Show breakdown</span></summary><div class="shortfall-breakdown"><p class="muted">Uncovered amounts by provision and transaction. These amounts remain part of actual spending; they are not deducted again.</p>${shortfallDetails.map(item=>`<div class="shortfall-item"><div><strong>${esc(item.provision)}</strong><small>${esc(item.description)} · ${esc(item.date)}${item.future?' · Scheduled':''}</small><small>Payment ${money(item.amount)} · Covered ${money(item.covered)}</small></div><strong>${money(item.uncovered)} uncovered</strong></div>`).join('')}</div></details>`:''}<p class="muted">Provisions do not move money between accounts. Existing actual spending and account balances are unchanged.</p>`;
 }
@@ -546,16 +552,30 @@ function renderCreditStatements(){
 }
 function renderCreditCycleSettings(){const c=creditCycle(),a=finance().creditStatementAnchor;for(const [id,val] of [['ccStatementDay',c.statementDay],['ccDueDay',c.dueDay]]){const el=$(id);if(!el)return;el.innerHTML=Array.from({length:31},(_,i)=>`<option value="${i+1}">${i+1}</option>`).join('');el.value=String(val)}$('ccOpeningStatementDate').value=a?.date||'';$('ccOpeningStatementAmount').value=a? (a.amount/100).toFixed(2):''}
 
-// v35: all category spending is counted against the combined monthly budget.
+// v36: classify actual transactions once. Provision coverage uses the same
+// monthly ledger as Annual Provisions, including scheduled future payments.
 function monthlyBudgetProgress(){
- const ts=forMonth(month),spentByCategory=new Map();
- for(const t of ts)spentByCategory.set(t.category,(spentByCategory.get(t.category)||0)+signedSpend(t));
- const categories=[...new Set([...data.categories,...Object.keys(data.budgets),...spentByCategory.keys()])];
- const rows=categories.map(category=>({category,spent:spentByCategory.get(category)||0,budget:Math.max(0,data.budgets[category]||0)}))
-   .filter(row=>row.budget>0||row.spent!==0);
- const spent=sum(ts),budget=Object.values(data.budgets).reduce((n,v)=>n+Math.max(0,v||0),0);
+ const ts=forMonth(month),key=ym(month),f=finance(),coverage=monthlyProvisionCoverage(key);
+ const provisionIds=new Set(f.provisions.map(p=>p.id));
+ const linked=new Set();
+ for(const p of f.provisions)for(const t of provisionTransactions(p))if(t.date.slice(0,7)===key&&t.date>=p.start)linked.add(t.id);
+ const byCategory=new Map();
+ for(const t of ts){
+  if(linked.has(t.id))continue;
+  byCategory.set(t.category,(byCategory.get(t.category)||0)+signedSpend(t));
+ }
+ const categories=[...new Set([...data.categories,...Object.keys(data.budgets),...byCategory.keys()])];
+ const rows=categories.map(category=>({category,spent:byCategory.get(category)||0,budget:Math.max(0,data.budgets[category]||0)})).filter(row=>row.budget>0||row.spent!==0);
+ const budget=Object.values(data.budgets).reduce((n,v)=>n+Math.max(0,v||0),0);
  const unbudgeted=rows.filter(row=>row.budget===0).reduce((n,row)=>n+row.spent,0);
- return {rows,spent,budget,unbudgeted};
+ const uncovered=coverage.shortfall;
+ // Shortfalls are already included in actual spending, not a new transaction.
+ // A refund or a payment made from a provision remains accounted for exactly once.
+ const ordinary=rows.reduce((n,r)=>n+r.spent,0);
+ const spent=sum(ts);
+ const actualProvision=spent-ordinary;
+ const budgetCharge=ordinary+uncovered;
+ return {rows,spent,budget,unbudgeted,ordinary,actualProvision,budgetCharge,coverage};
 }
 function renderDashboard(){
  if(provisionAccrue())void dbSave();
@@ -565,12 +585,17 @@ function renderDashboard(){
  $('monthSpend').textContent=money(progress.spent);
  $('monthBudget').textContent=money(progress.budget);
  bars($('cardBars'),data.cards.map(c=>[c,sum(ts.filter(t=>t.card===c))]),Math.max(progress.spent,1));
- $('budgetBars').innerHTML=progress.rows.length?progress.rows.map(({category,spent,budget})=>{
+ $('budgetBars').innerHTML=(progress.rows.length?progress.rows.map(({category,spent,budget})=>{
   const pct=budget>0?Math.round(spent/budget*100):null;
   const warning=budget===0?'Unbudgeted overspend':spent>budget?'Over budget':'';
   return `<div class="bar-item"><div class="inline"><span>${esc(category)}${budget===0?' · Unbudgeted':''}</span><strong>${money(spent)} / ${money(budget)}${pct===null?'':` · ${pct}%`}</strong></div><div class="bar-track"><div class="bar-fill" style="width:${budget>0?Math.min(100,Math.max(0,spent/budget*100)):spent>0?100:0}%"></div></div>${warning?`<small class="warning">${warning}</small>`:''}</div>`;
- }).join(''):'<p class="muted">No spending or budgets for this month.</p>';
+ }).join(''):'<p class="muted">No ordinary category spending or budgets for this month.</p>')+(progress.coverage.shortfall?`<div class="bar-item"><div class="inline"><span>Uncovered provision spending · monthly overspend</span><strong>${money(progress.coverage.shortfall)}</strong></div></div>`:'');
  $('budgetUnbudgeted').textContent=money(progress.unbudgeted);
+ $('budgetProvisionPaid').textContent=money(progress.actualProvision);
+ $('budgetProvisionCovered').textContent=money(progress.coverage.covered);
+ $('budgetProvisionShortfall').textContent=money(progress.coverage.shortfall);
+ $('budgetCharged').textContent=money(progress.budgetCharge);
+ $('budgetProvisionRows').innerHTML=progress.coverage.rows.length?progress.coverage.rows.map(r=>`<div class="finance-account-row"><span>${esc(r.name)}${r.future?' · includes scheduled':''}</span><strong>${money(r.paid)} paid · ${money(r.covered)} covered${r.shortfall?' · '+money(r.shortfall)+' uncovered':''}</strong></div>`).join(''):'<p class="muted">No provision-linked payments for this month.</p>';
  updateDashboardAccordionTotals();
 }
 
@@ -585,8 +610,8 @@ function updateDashboardAccordionTotals(){
  set('dashPlanTotal',document.querySelector('#budgetPlanSummary .finance-total')?.textContent?.trim()||'Not set');
  set('dashProvisionTotal',document.querySelector('#annualProvisionDashboard .finance-total')?.textContent?.trim()||'Not set');
  set('dashProjectedTotal',text('projectedBalance'));
- const {spent,budget}=monthlyBudgetProgress();
- set('dashBudgetTotal',budget?`${money(spent)} / ${money(budget)} · ${Math.round(spent/budget*100)}%`:`${money(spent)} / £0.00 · No budget`);
+ const {budgetCharge,budget}=monthlyBudgetProgress();
+ set('dashBudgetTotal',budget?`${money(budgetCharge)} / ${money(budget)} · ${Math.round(budgetCharge/budget*100)}%`:`${money(budgetCharge)} / £0.00 · No budget`);
 }
 
 function renderHistory(){let q=$('search').value.toLowerCase().trim();$('historyMonth').textContent=label(histMonth);let ts=forMonth(histMonth).filter(t=>[t.merchant,t.category,t.card,t.notes].join(' ').toLowerCase().includes(q)).sort((a,b)=>b.date.localeCompare(a.date)||b.created-a.created);$('historyList').innerHTML=ts.length?ts.map(t=>`<button type="button" class="transaction" data-id="${esc(t.id)}"><span class="transaction-line"><strong>${t.recurringKey?'↻ ':''}${t.refund?'↩ Refund · ':''}${t.provisionId?'◈ ':''}${esc(t.merchant||'Purchase')}</strong><span class="tx-sep"> · </span><span>${esc(t.date)}</span><span class="tx-sep"> · </span><span>${esc(t.category)}</span><span class="tx-sep"> · </span><span>${esc(t.card)}</span><span class="tx-sep"> · </span><strong class="transaction-amount">${money(signedSpend(t))}</strong></span></button>`).join(''):'<p class="muted">No matching transactions.</p>';const extras=financeHistory();if(extras.length){const all=[...extras,...ts.map(t=>({date:t.date,created:t.created,html:`<button type="button" class="transaction" data-id="${esc(t.id)}"><span class="transaction-line"><strong>${t.recurringKey?'↻ ':''}${t.refund?'↩ Refund · ':''}${t.provisionId?'◈ ':''}${esc(t.merchant||'Purchase')}</strong> · ${esc(t.date)} · ${esc(t.category)} · ${esc(t.card)} · <strong class="transaction-amount">${money(signedSpend(t))}</strong></span></button>`}))].sort((a,b)=>b.date.localeCompare(a.date)||b.created-a.created);$('historyList').innerHTML=all.map(x=>x.html).join('')} $('historyList').querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>openEdit(b.dataset.id));$('historyList').querySelectorAll('[data-finance-id]').forEach(b=>b.onclick=()=>openFinanceEdit(b.dataset.financeId))}
@@ -628,7 +653,7 @@ if('serviceWorker'in navigator&&location.protocol==='https:')navigator.serviceWo
 document.addEventListener('DOMContentLoaded',init);
 
 // Build identification. Read the loaded files rather than assuming a successful deployment.
-const RECORD_SPEND_JS_VERSION='v35';
+const RECORD_SPEND_JS_VERSION='v36';
 function showRecordSpendVersions(){
  const el=document.getElementById('appVersionDetails');if(!el)return;
  const css=getComputedStyle(document.documentElement).getPropertyValue('--rs-stylesheet-version').trim().replace(/["']/g,'')||'Unknown';
