@@ -546,7 +546,33 @@ function renderCreditStatements(){
 }
 function renderCreditCycleSettings(){const c=creditCycle(),a=finance().creditStatementAnchor;for(const [id,val] of [['ccStatementDay',c.statementDay],['ccDueDay',c.dueDay]]){const el=$(id);if(!el)return;el.innerHTML=Array.from({length:31},(_,i)=>`<option value="${i+1}">${i+1}</option>`).join('');el.value=String(val)}$('ccOpeningStatementDate').value=a?.date||'';$('ccOpeningStatementAmount').value=a? (a.amount/100).toFixed(2):''}
 
-function renderDashboard(){if(provisionAccrue())void dbSave();renderCreditStatements();renderBudgetPlan();renderTrend();renderProjection();provisionDashboard();let ts=forMonth(month),total=sum(ts),budget=Object.values(data.budgets).reduce((a,b)=>a+b,0);$('monthLabel').textContent=label(month);$('monthSpend').textContent=money(total);$('monthBudget').textContent=money(budget);bars($('categoryBars'),data.categories.map(c=>[c,sum(ts.filter(t=>t.category===c))]).filter(x=>x[1]!==0),Math.max(total,1));bars($('cardBars'),data.cards.map(c=>[c,sum(ts.filter(t=>t.card===c))]),Math.max(total,1));let used=data.categories.filter(c=>(data.budgets[c]||0)>0);$('budgetBars').innerHTML=used.length?used.map(c=>{let spent=sum(ts.filter(t=>t.category===c)),limit=data.budgets[c];return `<div class="bar-item"><div class="inline"><span>${esc(c)}</span><strong>${money(spent)} / ${money(limit)}</strong></div><div class="bar-track"><div class="bar-fill" style="width:${Math.min(100,Math.max(0,spent/limit*100))}%"></div></div>${spent>limit?'<small class="warning">Over budget</small>':''}</div>`}).join(''):'<p class="muted">Set monthly category budgets in Settings.</p>';updateDashboardAccordionTotals();}
+// v35: all category spending is counted against the combined monthly budget.
+function monthlyBudgetProgress(){
+ const ts=forMonth(month),spentByCategory=new Map();
+ for(const t of ts)spentByCategory.set(t.category,(spentByCategory.get(t.category)||0)+signedSpend(t));
+ const categories=[...new Set([...data.categories,...Object.keys(data.budgets),...spentByCategory.keys()])];
+ const rows=categories.map(category=>({category,spent:spentByCategory.get(category)||0,budget:Math.max(0,data.budgets[category]||0)}))
+   .filter(row=>row.budget>0||row.spent!==0);
+ const spent=sum(ts),budget=Object.values(data.budgets).reduce((n,v)=>n+Math.max(0,v||0),0);
+ const unbudgeted=rows.filter(row=>row.budget===0).reduce((n,row)=>n+row.spent,0);
+ return {rows,spent,budget,unbudgeted};
+}
+function renderDashboard(){
+ if(provisionAccrue())void dbSave();
+ renderCreditStatements();renderBudgetPlan();renderTrend();renderProjection();provisionDashboard();
+ const ts=forMonth(month),progress=monthlyBudgetProgress();
+ $('monthLabel').textContent=label(month);
+ $('monthSpend').textContent=money(progress.spent);
+ $('monthBudget').textContent=money(progress.budget);
+ bars($('cardBars'),data.cards.map(c=>[c,sum(ts.filter(t=>t.card===c))]),Math.max(progress.spent,1));
+ $('budgetBars').innerHTML=progress.rows.length?progress.rows.map(({category,spent,budget})=>{
+  const pct=budget>0?Math.round(spent/budget*100):null;
+  const warning=budget===0?'Unbudgeted overspend':spent>budget?'Over budget':'';
+  return `<div class="bar-item"><div class="inline"><span>${esc(category)}${budget===0?' · Unbudgeted':''}</span><strong>${money(spent)} / ${money(budget)}${pct===null?'':` · ${pct}%`}</strong></div><div class="bar-track"><div class="bar-fill" style="width:${budget>0?Math.min(100,Math.max(0,spent/budget*100)):spent>0?100:0}%"></div></div>${warning?`<small class="warning">${warning}</small>`:''}</div>`;
+ }).join(''):'<p class="muted">No spending or budgets for this month.</p>';
+ $('budgetUnbudgeted').textContent=money(progress.unbudgeted);
+ updateDashboardAccordionTotals();
+}
 
 // v34: dashboard presentation only. All original calculation targets remain in the DOM.
 function updateDashboardAccordionTotals(){
@@ -559,10 +585,8 @@ function updateDashboardAccordionTotals(){
  set('dashPlanTotal',document.querySelector('#budgetPlanSummary .finance-total')?.textContent?.trim()||'Not set');
  set('dashProvisionTotal',document.querySelector('#annualProvisionDashboard .finance-total')?.textContent?.trim()||'Not set');
  set('dashProjectedTotal',text('projectedBalance'));
- const ts=forMonth(month),used=data.categories.filter(c=>(data.budgets[c]||0)>0);
- const spent=used.reduce((n,c)=>n+sum(ts.filter(t=>t.category===c)),0);
- const budget=used.reduce((n,c)=>n+(data.budgets[c]||0),0);
- set('dashBudgetTotal',budget?`${money(spent)} / ${money(budget)} · ${Math.round(spent/budget*100)}%`:'No budgets set');
+ const {spent,budget}=monthlyBudgetProgress();
+ set('dashBudgetTotal',budget?`${money(spent)} / ${money(budget)} · ${Math.round(spent/budget*100)}%`:`${money(spent)} / £0.00 · No budget`);
 }
 
 function renderHistory(){let q=$('search').value.toLowerCase().trim();$('historyMonth').textContent=label(histMonth);let ts=forMonth(histMonth).filter(t=>[t.merchant,t.category,t.card,t.notes].join(' ').toLowerCase().includes(q)).sort((a,b)=>b.date.localeCompare(a.date)||b.created-a.created);$('historyList').innerHTML=ts.length?ts.map(t=>`<button type="button" class="transaction" data-id="${esc(t.id)}"><span class="transaction-line"><strong>${t.recurringKey?'↻ ':''}${t.refund?'↩ Refund · ':''}${t.provisionId?'◈ ':''}${esc(t.merchant||'Purchase')}</strong><span class="tx-sep"> · </span><span>${esc(t.date)}</span><span class="tx-sep"> · </span><span>${esc(t.category)}</span><span class="tx-sep"> · </span><span>${esc(t.card)}</span><span class="tx-sep"> · </span><strong class="transaction-amount">${money(signedSpend(t))}</strong></span></button>`).join(''):'<p class="muted">No matching transactions.</p>';const extras=financeHistory();if(extras.length){const all=[...extras,...ts.map(t=>({date:t.date,created:t.created,html:`<button type="button" class="transaction" data-id="${esc(t.id)}"><span class="transaction-line"><strong>${t.recurringKey?'↻ ':''}${t.refund?'↩ Refund · ':''}${t.provisionId?'◈ ':''}${esc(t.merchant||'Purchase')}</strong> · ${esc(t.date)} · ${esc(t.category)} · ${esc(t.card)} · <strong class="transaction-amount">${money(signedSpend(t))}</strong></span></button>`}))].sort((a,b)=>b.date.localeCompare(a.date)||b.created-a.created);$('historyList').innerHTML=all.map(x=>x.html).join('')} $('historyList').querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>openEdit(b.dataset.id));$('historyList').querySelectorAll('[data-finance-id]').forEach(b=>b.onclick=()=>openFinanceEdit(b.dataset.financeId))}
@@ -604,7 +628,7 @@ if('serviceWorker'in navigator&&location.protocol==='https:')navigator.serviceWo
 document.addEventListener('DOMContentLoaded',init);
 
 // Build identification. Read the loaded files rather than assuming a successful deployment.
-const RECORD_SPEND_JS_VERSION='v34';
+const RECORD_SPEND_JS_VERSION='v35';
 function showRecordSpendVersions(){
  const el=document.getElementById('appVersionDetails');if(!el)return;
  const css=getComputedStyle(document.documentElement).getPropertyValue('--rs-stylesheet-version').trim().replace(/["']/g,'')||'Unknown';
